@@ -5,7 +5,8 @@ local Shop = {}
 Shop.ITEM_TYPES = {
     WEAPON = "weapon",
     AMMO = "ammo",
-    HEALTH = "health"
+    HEALTH = "health",
+    UPGRADE = "upgrade"
 }
 
 -- Weapon costs
@@ -70,6 +71,52 @@ Shop.HEALTH_COSTS = {
     }
 }
 
+-- Upgrade costs
+Shop.UPGRADE_COSTS = {
+    DAMAGE_BOOST = {
+        cost = 400,
+        name = "Damage Boost",
+        description = "+10% weapon damage",
+        maxLevel = 5,
+        effect = "damage_multiplier"
+    },
+    RELOAD_SPEED = {
+        cost = 300,
+        name = "Reload Speed",
+        description = "+15% faster reload speed",
+        maxLevel = 5,
+        effect = "reload_speed"
+    },
+    MOVEMENT_SPEED = {
+        cost = 350,
+        name = "Movement Speed",
+        description = "+10% movement speed",
+        maxLevel = 5,
+        effect = "movement_speed"
+    },
+    HEALTH_BOOST = {
+        cost = 500,
+        name = "Health Boost",
+        description = "+25 max health",
+        maxLevel = 4,
+        effect = "max_health"
+    },
+    DASH_COOLDOWN = {
+        cost = 250,
+        name = "Dash Cooldown",
+        description = "-20% dash cooldown",
+        maxLevel = 3,
+        effect = "dash_cooldown"
+    },
+    AMMO_CAPACITY = {
+        cost = 450,
+        name = "Ammo Capacity",
+        description = "+25% ammo capacity",
+        maxLevel = 4,
+        effect = "ammo_capacity"
+    }
+}
+
 -- Shop state
 function Shop:new()
     local shop = {
@@ -80,6 +127,29 @@ function Shop:new()
     }
     setmetatable(shop, { __index = self })
     return shop
+end
+
+function Shop:getUpgradeCost(upgradeType, player)
+    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+    if not upgradeData then
+        return 0
+    end
+    
+    -- Calculate cost based on current level (cost increases by 50% per level)
+    local currentLevel = player:getUpgradeLevel(upgradeData.effect)
+    local baseCost = upgradeData.cost
+    local actualCost = baseCost * (1 + currentLevel * 0.5)  -- 50% increase per level
+    
+    return math.floor(actualCost)
+end
+
+function Shop:getUpgradeLevel(upgradeType, player)
+    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+    if not upgradeData then
+        return 0
+    end
+    
+    return player:getUpgradeLevel(upgradeData.effect)
 end
 
 -- Unlock new weapons based on wave progression
@@ -167,6 +237,20 @@ function Shop:getAvailableItems()
                 name = data.name,
                 description = data.description,
                 amount = data.amount
+            })
+        end
+        return items
+    elseif self.selectedCategory == "UPGRADES" then
+        local items = {}
+        for upgradeType, data in pairs(Shop.UPGRADE_COSTS) do
+            table.insert(items, {
+                type = Shop.ITEM_TYPES.UPGRADE,
+                upgradeType = upgradeType,
+                cost = data.cost,
+                name = data.name,
+                description = data.description,
+                maxLevel = data.maxLevel,
+                effect = data.effect
             })
         end
         return items

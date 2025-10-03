@@ -265,6 +265,16 @@ function UI:drawShop(gameManager, player)
     for i, item in ipairs(items) do
         local y = 200 + (i - 1) * 60
         
+        -- Calculate actual cost and level for upgrades
+        local actualCost = item.cost
+        local currentLevel = 0
+        local maxLevel = item.maxLevel or 0
+        
+        if item.type == "upgrade" then
+            actualCost = shop:getUpgradeCost(item.upgradeType, player)
+            currentLevel = shop:getUpgradeLevel(item.upgradeType, player)
+        end
+        
         -- Draw item background
         if shop.selectedItem == i then
             love.graphics.setColor(0.2, 0.4, 0.8, 0.8)  -- Highlight selected item
@@ -275,15 +285,32 @@ function UI:drawShop(gameManager, player)
         
         -- Draw item info
         love.graphics.setColor(1, 1, 1)
-        love.graphics.print(item.name, 160, y + 5)
-        love.graphics.print(item.description, 160, y + 20)
-        love.graphics.print("$" .. item.cost, love.graphics.getWidth() - 200, y + 15)
+        
+        if item.type == "upgrade" then
+            -- Show upgrade with level info
+            love.graphics.print(item.name .. " (Level " .. currentLevel .. "/" .. maxLevel .. ")", 160, y + 5)
+            love.graphics.print(item.description, 160, y + 20)
+        else
+            -- Show regular items
+            love.graphics.print(item.name, 160, y + 5)
+            love.graphics.print(item.description, 160, y + 20)
+        end
+        
+        love.graphics.print("$" .. actualCost, love.graphics.getWidth() - 200, y + 15)
         
         -- Draw purchase button
-        love.graphics.setColor(0.2, 0.8, 0.2, 0.8)
-        love.graphics.rectangle('fill', love.graphics.getWidth() - 120, y + 10, 100, 30)
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("BUY", love.graphics.getWidth() - 100, y + 18)
+        if item.type == "upgrade" and currentLevel >= maxLevel then
+            -- Max level reached
+            love.graphics.setColor(0.5, 0.5, 0.5, 0.8)
+            love.graphics.rectangle('fill', love.graphics.getWidth() - 120, y + 10, 100, 30)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("MAX", love.graphics.getWidth() - 100, y + 18)
+        else
+            love.graphics.setColor(0.2, 0.8, 0.2, 0.8)
+            love.graphics.rectangle('fill', love.graphics.getWidth() - 120, y + 10, 100, 30)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("BUY", love.graphics.getWidth() - 100, y + 18)
+        end
     end
     
     -- Draw shop message

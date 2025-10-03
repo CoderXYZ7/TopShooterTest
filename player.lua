@@ -41,7 +41,16 @@ function Player:new()
         },
         money = 10000,  -- Money for shop
         -- Weapon inventory to preserve weapon states
-        weaponInventory = {}
+        weaponInventory = {},
+        -- Upgrade levels
+        upgrades = {
+            damage_multiplier = 0,
+            reload_speed = 0,
+            movement_speed = 0,
+            max_health = 0,
+            dash_cooldown = 0,
+            ammo_capacity = 0
+        }
     }
     setmetatable(player, { __index = self })
     return player
@@ -133,7 +142,7 @@ function Player:update(dt, assets)
     if love.keyboard.isDown('space') and not self.isDashing and self.dashCooldown <= 0 then
         self.isDashing = true
         self.dashDuration = 0.2
-        self.dashCooldown = 1.5
+        self.dashCooldown = self:getEffectiveDashCooldown()
         self.invulnerable = true
         self.invulnerableTime = 0.2
     end
@@ -449,6 +458,101 @@ function Player:hasWeapon(weaponType)
     end
     
     return false
+end
+
+-- Upgrade methods
+function Player:getUpgradeLevel(upgradeType)
+    return self.upgrades[upgradeType] or 0
+end
+
+function Player:canUpgrade(upgradeType)
+    local Shop = require('shop')
+    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+    if not upgradeData then
+        return false
+    end
+    
+    local currentLevel = self:getUpgradeLevel(upgradeData.effect)
+    return currentLevel < upgradeData.maxLevel
+end
+
+function Player:purchaseUpgrade(upgradeType)
+    local Shop = require('shop')
+    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+    if not upgradeData then
+        return false, "Invalid upgrade type"
+    end
+    
+    local currentLevel = self:getUpgradeLevel(upgradeData.effect)
+    if currentLevel >= upgradeData.maxLevel then
+        return false, "Max level reached"
+    end
+    
+    local cost = upgradeData.cost
+    if not self:spendMoney(cost) then
+        return false, "Not enough money"
+    end
+    
+    -- Apply the upgrade
+    self.upgrades[upgradeData.effect] = currentLevel + 1
+    self:applyUpgradeEffects()
+    
+    return true, "Upgrade purchased: " .. upgradeData.name .. " (Level " .. (currentLevel + 1) .. ")"
+end
+
+function Player:applyUpgradeEffects()
+    -- Apply damage multiplier
+    local damageLevel = self.upgrades.damage_multiplier or 0
+    local damageMultiplier = 1.0 + (damageLevel * 0.10)  -- +10% per level
+    
+    -- Apply movement speed
+    local speedLevel = self.upgrades.movement_speed or 0
+    local speedMultiplier = 1.0 + (speedLevel * 0.10)  -- +10% per level
+    self.speed = 300 * speedMultiplier
+    self.dashSpeed = 600 * speedMultiplier
+    
+    -- Apply max health
+    local healthLevel = self.upgrades.max_health or 0
+    local healthBonus = healthLevel * 25  -- +25 health per level
+    self.maxHealth = 100 + healthBonus
+    
+    -- Apply dash cooldown reduction
+    local dashLevel = self.upgrades.dash_cooldown or 0
+    local dashCooldownMultiplier = 1.0 - (dashLevel * 0.20)  -- -20% per level
+    -- Note: Dash cooldown is applied when checking cooldown
+    
+    -- Apply ammo capacity
+    local ammoLevel = self.upgrades.ammo_capacity or 0
+    local ammoMultiplier = 1.0 + (ammoLevel * 0.25)  -- +25% per level
+    -- Note: Ammo capacity is applied when creating weapons
+end
+
+function Player:getEffectiveDashCooldown()
+    local dashLevel = self.upgrades.dash_cooldown or 0
+    local dashCooldownMultiplier = 1.0 - (dashLevel * 0.20)  -- -20% per level
+    return 1.5 * dashCooldownMultiplier
+end
+
+function Player:getEffectiveDamage(weapon)
+    local damageLevel = self.upgrades.damage_multiplier or 0
+    local damageMultiplier = 1.0 + (damageLevel * 0.10)  -- +10% per level
+    return weapon.damage * damageMultiplier
+end
+
+function Player:getEffectiveReloadTime(weapon)
+    local reloadLevel = self.upgrades.reload_speed or 0
+    local reloadMultiplier = 1.0 - (reloadLevel * 0.15)  -- -15% per level
+    return weapon.reloadTime * reloadMultiplier
+end
+
+function Player:getEffectiveAmmoCapacity(weapon)
+    local ammoLevel = self.upgrades.ammo_capacity or 0
+    local ammoMultiplier = 1.0 + (ammoLevel * 0.25)  -- +25% per level
+    return math.floor(weapon.ammoCapacity * ammoMultiplier)
+end
+
+function Player:getUpgradeInfo()
+    return self.upgrades
 end
 
 return Player

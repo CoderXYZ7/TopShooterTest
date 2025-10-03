@@ -363,6 +363,17 @@ function GameManager:buyItem(player, itemType, itemData)
         else
             return false, "Not enough money"
         end
+    elseif itemType == "upgrade" then
+        cost = self.shop:getUpgradeCost(itemData.upgradeType, player)
+        if player:spendMoney(cost) then
+            success, message = player:purchaseUpgrade(itemData.upgradeType)
+            if not success then
+                player:addMoney(cost)  -- Refund if upgrade couldn't be purchased
+                return false, message
+            end
+        else
+            return false, "Not enough money"
+        end
     end
     
     return success, success and "Purchase successful" or "Purchase failed"

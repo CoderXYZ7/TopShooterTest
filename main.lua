@@ -108,8 +108,8 @@ function love.update(dt)
             local deadEnemyIndices = {}
             
             for _, hit in ipairs(hitEnemies) do
-                -- Calculate damage based on distance falloff
-                local baseDamage = weapon.damage
+                -- Calculate damage based on distance falloff with upgrade effects
+                local baseDamage = game.player:getEffectiveDamage(weapon)
                 local finalDamage = baseDamage
                 
                 -- Apply damage falloff beyond optimal range
@@ -282,11 +282,13 @@ function love.keypressed(key)
         elseif key == 'left' then
             -- Switch shop categories
             if shop.selectedCategory == "WEAPONS" then
-                shop.selectedCategory = "HEALTH"
+                shop.selectedCategory = "UPGRADES"
             elseif shop.selectedCategory == "AMMO" then
                 shop.selectedCategory = "WEAPONS"
             elseif shop.selectedCategory == "HEALTH" then
                 shop.selectedCategory = "AMMO"
+            elseif shop.selectedCategory == "UPGRADES" then
+                shop.selectedCategory = "HEALTH"
             end
             shop.selectedItem = 1
         elseif key == 'right' then
@@ -296,6 +298,8 @@ function love.keypressed(key)
             elseif shop.selectedCategory == "AMMO" then
                 shop.selectedCategory = "HEALTH"
             elseif shop.selectedCategory == "HEALTH" then
+                shop.selectedCategory = "UPGRADES"
+            elseif shop.selectedCategory == "UPGRADES" then
                 shop.selectedCategory = "WEAPONS"
             end
             shop.selectedItem = 1

@@ -39,7 +39,7 @@ function Player:new()
             [Weapons.AMMO_TYPES.AMMO_9MM] = 60,  -- Start with 60 9mm rounds
             [Weapons.AMMO_TYPES.AMMO_3006] = 0   -- Start with 0 .30-06 rounds (pistol only)
         },
-        money = 0,  -- Money for shop
+        money = 10000,  -- Money for shop
         -- Weapon inventory to preserve weapon states
         weaponInventory = {}
     }

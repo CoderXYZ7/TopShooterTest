@@ -231,6 +231,11 @@ function love.draw()
         game.ui:drawShop(game.gameManager, game.player)
     end
     
+    -- Draw loadout manager if in loadout mode
+    if game.ui:isLoadoutMode() then
+        game.ui:drawLoadoutManager(game.player)
+    end
+    
     -- Draw wave info
     game.gameManager:drawWaveInfo()
 end
@@ -239,6 +244,18 @@ function love.keypressed(key)
     -- Toggle debug mode
     if key == 'f1' then
         game.DEBUG = not game.DEBUG
+    end
+    
+    -- Toggle loadout mode (only when not in shop)
+    if key == 'tab' and not game.gameManager:isShopOpen() then
+        game.ui:toggleLoadoutMode()
+    end
+    
+    -- Handle loadout input if in loadout mode
+    if game.ui:isLoadoutMode() then
+        if game.ui:handleLoadoutInput(key, game.player) then
+            return
+        end
     end
     
     -- Restart game

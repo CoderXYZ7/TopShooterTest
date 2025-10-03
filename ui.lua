@@ -16,7 +16,10 @@ function UI:new()
         victory = false,
         money = 0,
         shopMessage = "",
-        shopMessageTimer = 0
+        shopMessageTimer = 0,
+        loadoutMode = false,
+        selectedLoadoutSlot = 1,
+        selectedInventoryWeapon = 1
     }
     setmetatable(ui, { __index = self })
     return ui
@@ -308,6 +311,142 @@ function UI:updateShopMessage(dt)
             self.shopMessage = ""
         end
     end
+end
+
+-- Loadout management methods
+function UI:drawLoadoutManager(player)
+    if not self.loadoutMode then
+        return
+    end
+    
+    -- Draw loadout background
+    love.graphics.setColor(0, 0, 0, 0.9)
+    love.graphics.rectangle('fill', 100, 100, love.graphics.getWidth() - 200, love.graphics.getHeight() - 200)
+    
+    -- Draw header
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("LOADOUT MANAGEMENT", love.graphics.getWidth()/2 - 100, 120)
+    love.graphics.print("Press TAB to exit loadout mode", love.graphics.getWidth()/2 - 120, 150)
+    
+    -- Draw equipped weapon slots
+    love.graphics.print("EQUIPPED WEAPONS", 150, 200)
+    local slots = player:getWeaponSlots()
+    
+    for slot = 1, 3 do
+        local weapon = slots[slot]
+        local x = 150 + (slot - 1) * 200
+        local y = 230
+        
+        -- Draw slot background
+        if slot == self.selectedLoadoutSlot then
+            love.graphics.setColor(0.2, 0.6, 1, 0.8)  -- Highlight selected slot
+        else
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        end
+        love.graphics.rectangle('fill', x, y, 180, 80)
+        
+        -- Draw weapon info
+        love.graphics.setColor(1, 1, 1)
+        if weapon then
+            love.graphics.print("Slot " .. slot, x + 10, y + 5)
+            love.graphics.print(weapon:getWeaponName(), x + 10, y + 25)
+            local ammo, maxAmmo = weapon:getAmmoInfo()
+            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, x + 10, y + 45)
+        else
+            love.graphics.print("Slot " .. slot, x + 10, y + 5)
+            love.graphics.print("Empty", x + 70, y + 40)
+        end
+    end
+    
+    -- Draw unequipped weapons
+    local unequipped = player:getUnequippedWeapons()
+    love.graphics.print("UNEQUIPPED WEAPONS", 150, 350)
+    
+    if #unequipped > 0 then
+        for i, weapon in ipairs(unequipped) do
+            local x = 150 + ((i - 1) % 3) * 200
+            local y = 380 + math.floor((i - 1) / 3) * 80
+            
+            -- Draw weapon background
+            if i == self.selectedInventoryWeapon then
+                love.graphics.setColor(0.2, 0.8, 0.2, 0.8)  -- Highlight selected inventory weapon
+            else
+                love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+            end
+            love.graphics.rectangle('fill', x, y, 180, 60)
+            
+            -- Draw weapon info
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print(weapon:getWeaponName(), x + 10, y + 5)
+            local ammo, maxAmmo = weapon:getAmmoInfo()
+            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, x + 10, y + 25)
+        end
+    else
+        love.graphics.print("No unequipped weapons", 150, 380)
+    end
+    
+    -- Draw instructions
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("ARROW KEYS: Navigate", 150, love.graphics.getHeight() - 150)
+    love.graphics.print("ENTER: Swap selected slot with selected inventory weapon", 150, love.graphics.getHeight() - 130)
+    love.graphics.print("S: Swap weapon slots (when both slots selected)", 150, love.graphics.getHeight() - 110)
+    love.graphics.setColor(1, 1, 1)
+end
+
+function UI:toggleLoadoutMode()
+    self.loadoutMode = not self.loadoutMode
+    if self.loadoutMode then
+        self.selectedLoadoutSlot = 1
+        self.selectedInventoryWeapon = 1
+    end
+end
+
+function UI:isLoadoutMode()
+    return self.loadoutMode
+end
+
+function UI:handleLoadoutInput(key, player)
+    if not self.loadoutMode then
+        return false
+    end
+    
+    local unequipped = player:getUnequippedWeapons()
+    
+    if key == 'up' then
+        if self.selectedLoadoutSlot > 1 then
+            self.selectedLoadoutSlot = self.selectedLoadoutSlot - 1
+        end
+        return true
+    elseif key == 'down' then
+        if self.selectedLoadoutSlot < 3 then
+            self.selectedLoadoutSlot = self.selectedLoadoutSlot + 1
+        end
+        return true
+    elseif key == 'left' then
+        if self.selectedInventoryWeapon > 1 then
+            self.selectedInventoryWeapon = self.selectedInventoryWeapon - 1
+        end
+        return true
+    elseif key == 'right' then
+        if self.selectedInventoryWeapon < #unequipped then
+            self.selectedInventoryWeapon = self.selectedInventoryWeapon + 1
+        end
+        return true
+    elseif key == 'return' then
+        -- Swap selected slot with selected inventory weapon
+        if #unequipped > 0 then
+            player:swapWeaponWithInventory(self.selectedLoadoutSlot, self.selectedInventoryWeapon)
+        end
+        return true
+    elseif key == 's' then
+        -- Swap weapon slots
+        local targetSlot = (self.selectedLoadoutSlot % 3) + 1
+        player:moveWeapon(self.selectedLoadoutSlot, targetSlot)
+        self.selectedLoadoutSlot = targetSlot
+        return true
+    end
+    
+    return false
 end
 
 return UI

@@ -1,4 +1,4 @@
--- Enhanced Player module with weapon system
+-- Enhanced Player module with weapon system and inventory
 local Player = {}
 local Weapons = require('weapons')
 
@@ -20,7 +20,14 @@ function Player:new()
         dashSpeed = 600,
         walkingFrameDuration = 0.08,
         walkingFrameTime = 0,
-        currentWeapon = Weapons:new("BOLT_ACTION"),  -- Start with bolt action
+        -- Inventory system
+        weaponSlots = {
+            [1] = Weapons:new("SEMI_AUTO_PISTOL"),  -- Start with pistol in slot 1
+            [2] = nil,  -- Empty slot 2
+            [3] = nil   -- Empty slot 3
+        },
+        currentWeaponSlot = 1,  -- Start with slot 1 equipped
+        unequippedWeapons = {},  -- Weapons not in slots
         weaponSwitchCooldown = 0,
         lastShotTime = 0,
         isShooting = false,
@@ -30,8 +37,9 @@ function Player:new()
         -- Ammo inventory
         ammoInventory = {
             [Weapons.AMMO_TYPES.AMMO_9MM] = 60,  -- Start with 60 9mm rounds
-            [Weapons.AMMO_TYPES.AMMO_3006] = 20   -- Start with 20 .30-06 rounds
+            [Weapons.AMMO_TYPES.AMMO_3006] = 0   -- Start with 0 .30-06 rounds (pistol only)
         },
+        money = 0,  -- Money for shop
         -- Weapon inventory to preserve weapon states
         weaponInventory = {}
     }
@@ -43,22 +51,22 @@ function Player:update(dt, assets)
     local currentTime = love.timer.getTime()
     
     -- Update weapon reload with inventory
-    self.currentWeapon:updateReload(dt, self.ammoInventory)
+    local currentWeapon = self:getCurrentWeapon()
+    if currentWeapon then
+        currentWeapon:updateReload(dt, self.ammoInventory)
+    end
     
-    -- Handle weapon switching
+    -- Handle weapon switching between slots
     self.weaponSwitchCooldown = math.max(0, self.weaponSwitchCooldown - dt)
     
-    -- Weapon switching keys
+    -- Weapon switching keys (1, 2, 3 for slots)
     if self.weaponSwitchCooldown <= 0 then
         if love.keyboard.isDown('1') then
-            self:switchWeapon("BOLT_ACTION")
-            self.weaponSwitchCooldown = 0.5
+            self:switchWeaponSlot(1)
         elseif love.keyboard.isDown('2') then
-            self:switchWeapon("SEMI_AUTO_PISTOL")
-            self.weaponSwitchCooldown = 0.5
+            self:switchWeaponSlot(2)
         elseif love.keyboard.isDown('3') then
-            self:switchWeapon("SMG")
-            self.weaponSwitchCooldown = 0.5
+            self:switchWeaponSlot(3)
         end
     end
 
@@ -89,10 +97,13 @@ function Player:update(dt, assets)
     
     -- Apply weapon-specific restrictions from weapon definitions
     if isShooting then
-        local weaponType = self.currentWeapon.type
-        local weaponConfig = Weapons.TYPES[weaponType]
-        canMove = weaponConfig.canMoveWhileShooting
-        canAim = weaponConfig.canAimWhileShooting
+        local currentWeapon = self:getCurrentWeapon()
+        if currentWeapon then
+            local weaponType = currentWeapon.type
+            local weaponConfig = Weapons.TYPES[weaponType]
+            canMove = weaponConfig.canMoveWhileShooting
+            canAim = weaponConfig.canAimWhileShooting
+        end
     end
 
     -- Movement with dash and weapon restrictions
@@ -128,8 +139,9 @@ function Player:update(dt, assets)
     end
 
     -- Reload weapon with inventory check
-    if love.keyboard.isDown('r') and not self.currentWeapon.isReloading then
-        self.currentWeapon:startReload(self.ammoInventory)
+    local currentWeapon = self:getCurrentWeapon()
+    if love.keyboard.isDown('r') and currentWeapon and not currentWeapon.isReloading then
+        currentWeapon:startReload(self.ammoInventory)
     end
 
     -- Update walking time only if moving
@@ -148,8 +160,9 @@ function Player:update(dt, assets)
     end
 
     -- Shooting with weapon system
-    if love.mouse.isDown(1) and self.currentWeapon:canShoot(currentTime) then
-        if self.currentWeapon:shoot(currentTime) then
+    local currentWeapon = self:getCurrentWeapon()
+    if love.mouse.isDown(1) and currentWeapon and currentWeapon:canShoot(currentTime) then
+        if currentWeapon:shoot(currentTime) then
             self.lastShotTime = currentTime
             self.isShooting = true
             self.shootingTime = 0
@@ -258,9 +271,12 @@ function Player:addAmmo(amount, ammoType)
         self.ammoInventory[ammoType] = (self.ammoInventory[ammoType] or 0) + amount
     else
         -- Add ammo to current weapon type
-        local weaponConfig = Weapons.TYPES[self.currentWeapon.type]
-        local currentAmmoType = weaponConfig.ammoType
-        self.ammoInventory[currentAmmoType] = (self.ammoInventory[currentAmmoType] or 0) + amount
+        local currentWeapon = self:getCurrentWeapon()
+        if currentWeapon then
+            local weaponConfig = Weapons.TYPES[currentWeapon.type]
+            local currentAmmoType = weaponConfig.ammoType
+            self.ammoInventory[currentAmmoType] = (self.ammoInventory[currentAmmoType] or 0) + amount
+        end
     end
 end
 
@@ -269,41 +285,170 @@ function Player:getCenter()
 end
 
 function Player:getWeaponInfo()
-    local currentAmmo, maxAmmo = self.currentWeapon:getAmmoInfo()
-    local weaponName = self.currentWeapon:getWeaponName()
-    local weaponType = self.currentWeapon.type
-    local weaponConfig = Weapons.TYPES[weaponType]
-    local ammoType = weaponConfig.ammoType
-    local inventoryAmmo = self.ammoInventory[ammoType] or 0
-    
-    return currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType
+    local currentWeapon = self:getCurrentWeapon()
+    if currentWeapon then
+        local currentAmmo, maxAmmo = currentWeapon:getAmmoInfo()
+        local weaponName = currentWeapon:getWeaponName()
+        local weaponType = currentWeapon.type
+        local weaponConfig = Weapons.TYPES[weaponType]
+        local ammoType = weaponConfig.ammoType
+        local inventoryAmmo = self.ammoInventory[ammoType] or 0
+        
+        return currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType
+    end
+    return 0, 0, "No Weapon", 0, "NONE"
 end
 
 function Player:getWeaponMovementRestrictions()
-    local weaponType = self.currentWeapon.type
-    local weaponConfig = Weapons.TYPES[weaponType]
-    return weaponConfig.canMoveWhileShooting, weaponConfig.canAimWhileShooting
+    local currentWeapon = self:getCurrentWeapon()
+    if currentWeapon then
+        local weaponType = currentWeapon.type
+        local weaponConfig = Weapons.TYPES[weaponType]
+        return weaponConfig.canMoveWhileShooting, weaponConfig.canAimWhileShooting
+    end
+    return true, true  -- Default to no restrictions if no weapon
 end
 
 function Player:getCurrentWeapon()
-    return self.currentWeapon
+    return self.weaponSlots[self.currentWeaponSlot]
 end
 
 function Player:getMuzzlePosition()
     local centerX, centerY = self:getCenter()
-    return self.currentWeapon:getMuzzlePosition(centerX, centerY, self.angle)
+    local currentWeapon = self:getCurrentWeapon()
+    if currentWeapon then
+        return currentWeapon:getMuzzlePosition(centerX, centerY, self.angle)
+    end
+    return centerX, centerY
 end
 
 function Player:isReloading()
-    return self.currentWeapon.isReloading
+    local currentWeapon = self:getCurrentWeapon()
+    return currentWeapon and currentWeapon.isReloading or false
 end
 
 function Player:getReloadProgress()
-    return self.currentWeapon:getReloadProgress()
+    local currentWeapon = self:getCurrentWeapon()
+    return currentWeapon and currentWeapon:getReloadProgress() or 1.0
 end
 
 function Player:isAlive()
     return self.health > 0
+end
+
+-- Inventory management methods
+
+function Player:switchWeaponSlot(slot)
+    if slot >= 1 and slot <= 3 and self.weaponSlots[slot] then
+        self.currentWeaponSlot = slot
+        self.weaponSwitchCooldown = 0.5
+        return true
+    end
+    return false
+end
+
+function Player:addWeapon(weaponType)
+    -- Check if we already have this weapon type
+    for slot = 1, 3 do
+        if self.weaponSlots[slot] and self.weaponSlots[slot].type == weaponType then
+            return false  -- Already have this weapon
+        end
+    end
+    
+    -- Try to add to empty slot first
+    for slot = 1, 3 do
+        if not self.weaponSlots[slot] then
+            self.weaponSlots[slot] = Weapons:new(weaponType)
+            return true
+        end
+    end
+    
+    -- No empty slots, add to unequipped
+    table.insert(self.unequippedWeapons, Weapons:new(weaponType))
+    return true
+end
+
+function Player:moveWeapon(fromSlot, toSlot)
+    if fromSlot == toSlot then return false end
+    
+    if fromSlot >= 1 and fromSlot <= 3 and toSlot >= 1 and toSlot <= 3 then
+        local temp = self.weaponSlots[toSlot]
+        self.weaponSlots[toSlot] = self.weaponSlots[fromSlot]
+        self.weaponSlots[fromSlot] = temp
+        
+        -- Update current weapon slot if needed
+        if self.currentWeaponSlot == fromSlot then
+            self.currentWeaponSlot = toSlot
+        elseif self.currentWeaponSlot == toSlot then
+            self.currentWeaponSlot = fromSlot
+        end
+        
+        return true
+    end
+    return false
+end
+
+function Player:swapWeaponWithInventory(slot, inventoryIndex)
+    if slot >= 1 and slot <= 3 and inventoryIndex >= 1 and inventoryIndex <= #self.unequippedWeapons then
+        local temp = self.weaponSlots[slot]
+        self.weaponSlots[slot] = self.unequippedWeapons[inventoryIndex]
+        self.unequippedWeapons[inventoryIndex] = temp
+        
+        -- Update current weapon slot if needed
+        if self.currentWeaponSlot == slot then
+            -- Weapon was swapped out, switch to new weapon
+            self.currentWeaponSlot = slot
+        end
+        
+        return true
+    end
+    return false
+end
+
+function Player:getWeaponSlots()
+    return self.weaponSlots
+end
+
+function Player:getUnequippedWeapons()
+    return self.unequippedWeapons
+end
+
+function Player:getCurrentWeaponSlot()
+    return self.currentWeaponSlot
+end
+
+function Player:getMoney()
+    return self.money
+end
+
+function Player:addMoney(amount)
+    self.money = self.money + amount
+end
+
+function Player:spendMoney(amount)
+    if self.money >= amount then
+        self.money = self.money - amount
+        return true
+    end
+    return false
+end
+
+function Player:hasWeapon(weaponType)
+    -- Check equipped slots
+    for slot = 1, 3 do
+        if self.weaponSlots[slot] and self.weaponSlots[slot].type == weaponType then
+            return true
+        end
+    end
+    
+    -- Check unequipped weapons
+    for _, weapon in ipairs(self.unequippedWeapons) do
+        if weapon.type == weaponType then
+            return true
+        end
+    end
+    
+    return false
 end
 
 return Player

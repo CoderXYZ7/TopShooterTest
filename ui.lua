@@ -1,4 +1,4 @@
--- Enhanced UI module
+-- Enhanced UI module with inventory and shop display
 local UI = {}
 
 function UI:new()
@@ -13,13 +13,16 @@ function UI:new()
         showTutorial = true,
         tutorialTime = 0,
         gameOver = false,
-        victory = false
+        victory = false,
+        money = 0,
+        shopMessage = "",
+        shopMessageTimer = 0
     }
     setmetatable(ui, { __index = self })
     return ui
 end
 
-function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierWalkingImages)
+function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierWalkingImages, gameManager)
     -- Draw main UI panel
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle('fill', 0, 0, 300, 120)
@@ -59,9 +62,12 @@ function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierW
     local seconds = math.floor(self.timeSurvived % 60)
     love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 150, 70)
     
+    -- Money display
+    love.graphics.print("Money: $" .. player:getMoney(), 150, 85)
+    
     -- High score
     if self.highScore > 0 then
-        love.graphics.print("High Score: " .. self.highScore, 150, 85)
+        love.graphics.print("High Score: " .. self.highScore, 150, 100)
     end
     
     -- Dash cooldown indicator
@@ -77,6 +83,9 @@ function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierW
         love.graphics.print("DASH READY", 225, 12)
         love.graphics.setColor(1, 1, 1)
     end
+    
+    -- Draw inventory slots
+    self:drawInventory(player)
     
     -- Debug information
     if debug then
@@ -187,6 +196,118 @@ end
 
 function UI:isVictory()
     return self.victory
+end
+
+-- Inventory display methods
+function UI:drawInventory(player)
+    local slots = player:getWeaponSlots()
+    local currentSlot = player:getCurrentWeaponSlot()
+    
+    -- Draw inventory panel
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle('fill', 0, love.graphics.getHeight() - 80, 300, 80)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("INVENTORY", 10, love.graphics.getHeight() - 75)
+    
+    -- Draw weapon slots
+    for slot = 1, 3 do
+        local weapon = slots[slot]
+        local x = 10 + (slot - 1) * 90
+        local y = love.graphics.getHeight() - 55
+        
+        -- Draw slot background
+        if slot == currentSlot then
+            love.graphics.setColor(0.2, 0.6, 1, 0.8)  -- Highlight current slot
+        else
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        end
+        love.graphics.rectangle('fill', x, y, 80, 40)
+        
+        -- Draw weapon info
+        love.graphics.setColor(1, 1, 1)
+        if weapon then
+            love.graphics.print(weapon:getWeaponName(), x + 5, y + 5)
+            local ammo, maxAmmo = weapon:getAmmoInfo()
+            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, x + 5, y + 20)
+        else
+            love.graphics.print("Empty", x + 25, y + 15)
+        end
+        
+        -- Draw slot number
+        love.graphics.print(slot, x + 35, y - 15)
+    end
+end
+
+-- Shop display methods
+function UI:drawShop(gameManager, player)
+    if not gameManager:isShopOpen() then
+        return
+    end
+    
+    local shop = gameManager:getShop()
+    local timeLeft = gameManager:getShopTimeLeft()
+    
+    -- Draw shop background
+    love.graphics.setColor(0, 0, 0, 0.9)
+    love.graphics.rectangle('fill', 100, 100, love.graphics.getWidth() - 200, love.graphics.getHeight() - 200)
+    
+    -- Draw shop header
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("WEAPONS SHOP - Wave " .. self.wave, love.graphics.getWidth()/2 - 100, 120)
+    love.graphics.print("Time left: " .. math.ceil(timeLeft) .. "s", love.graphics.getWidth()/2 - 50, 140)
+    love.graphics.print("Money: $" .. player:getMoney(), love.graphics.getWidth()/2 - 50, 160)
+    
+    -- Draw available items
+    local items = shop:getAvailableItems()
+    for i, item in ipairs(items) do
+        local y = 200 + (i - 1) * 60
+        
+        -- Draw item background
+        if shop.selectedItem == i then
+            love.graphics.setColor(0.2, 0.4, 0.8, 0.8)  -- Highlight selected item
+        else
+            love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+        end
+        love.graphics.rectangle('fill', 150, y, love.graphics.getWidth() - 300, 50)
+        
+        -- Draw item info
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(item.name, 160, y + 5)
+        love.graphics.print(item.description, 160, y + 20)
+        love.graphics.print("$" .. item.cost, love.graphics.getWidth() - 200, y + 15)
+        
+        -- Draw purchase button
+        love.graphics.setColor(0.2, 0.8, 0.2, 0.8)
+        love.graphics.rectangle('fill', love.graphics.getWidth() - 120, y + 10, 100, 30)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print("BUY", love.graphics.getWidth() - 100, y + 18)
+    end
+    
+    -- Draw shop message
+    if self.shopMessage ~= "" then
+        love.graphics.setColor(1, 1, 1, 0.8)
+        love.graphics.print(self.shopMessage, love.graphics.getWidth()/2 - 100, love.graphics.getHeight() - 150)
+        love.graphics.setColor(1, 1, 1)
+    end
+    
+    -- Draw instructions
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("Press ENTER to continue to next wave", love.graphics.getWidth()/2 - 150, love.graphics.getHeight() - 100)
+    love.graphics.setColor(1, 1, 1)
+end
+
+function UI:setShopMessage(message)
+    self.shopMessage = message
+    self.shopMessageTimer = 3.0  -- Show message for 3 seconds
+end
+
+function UI:updateShopMessage(dt)
+    if self.shopMessageTimer > 0 then
+        self.shopMessageTimer = self.shopMessageTimer - dt
+        if self.shopMessageTimer <= 0 then
+            self.shopMessage = ""
+        end
+    end
 end
 
 return UI

@@ -1,11 +1,14 @@
 -- Game Manager for handling game states, waves, and progression
 local GameManager = {}
+local Shop = require('shop')
 
 function GameManager:new()
     local manager = {
-        currentState = "PLAYING",  -- PLAYING, GAME_OVER, VICTORY, PAUSED
+        currentState = "PLAYING",  -- PLAYING, GAME_OVER, VICTORY, PAUSED, SHOP
         wave = 1,
         enemiesPerWave = 5,
+        enemiesSpawnedThisWave = 0,
+        enemiesKilledThisWave = 0,
         waveTimer = 0,
         waveCooldown = 3,  -- Seconds between waves
         spawnTimer = 0,
@@ -16,7 +19,11 @@ function GameManager:new()
         pickupSpawnInterval = 10.0,  -- Seconds between pickup spawns
         pickups = {},
         waveCleared = false,
-        createEnemy = nil  -- Will be set by main.lua
+        createEnemy = nil,  -- Will be set by main.lua
+        shop = Shop:new(),
+        shopOpen = false,
+        shopTimer = 0,
+        shopDuration = 30  -- 30 seconds to shop between waves
     }
     setmetatable(manager, { __index = self })
     return manager
@@ -48,6 +55,18 @@ function GameManager:update(dt, player, enemies, particles, ui)
         -- Update pickups
         self:updatePickups(dt, player, particles)
         
+    elseif self.currentState == "SHOP" then
+        -- Handle shop state
+        self.shopTimer = self.shopTimer + dt
+        
+        -- Close shop when time runs out or player presses enter
+        if self.shopTimer >= self.shopDuration or love.keyboard.isDown('return') then
+            self.currentState = "PLAYING"
+            self.shop:close()
+            self.waveCleared = false
+            self.spawnTimer = 0
+        end
+        
     elseif self.currentState == "GAME_OVER" or self.currentState == "VICTORY" then
         -- Handle restart
         if love.keyboard.isDown('r') then
@@ -60,35 +79,54 @@ function GameManager:update(dt, player, enemies, particles, ui)
 end
 
 function GameManager:updateWaveSystem(dt, enemies, ui)
-    -- Check if wave is cleared
-    if #enemies == 0 and not self.waveCleared then
+    -- Check if wave is cleared (all required enemies spawned and killed)
+    if not self.waveCleared and self.enemiesSpawnedThisWave >= self.enemiesPerWave and #enemies == 0 then
         self.waveCleared = true
         self.waveTimer = 0
         
-        -- Increase difficulty for next wave
-        self.wave = self.wave + 1
-        self.enemiesPerWave = math.min(30, 5 + self.wave * 2)
-        self.difficultyMultiplier = 1.0 + (self.wave - 1) * 0.1
-        self.spawnInterval = math.max(0.5, 2.0 - (self.wave - 1) * 0.1)
+        -- Give player money for clearing wave
+        local waveBonus = self.wave * 50
+        ui:addScore(waveBonus)
         
-        ui:setWave(self.wave)
-        ui:addScore(self.wave * 100)  -- Bonus for clearing wave
-    end
-    
-    -- Handle wave cooldown
-    if self.waveCleared then
-        self.waveTimer = self.waveTimer + dt
-        if self.waveTimer >= self.waveCooldown then
-            self.waveCleared = false
-            self.spawnTimer = 0
+        -- Open shop between waves (except after wave 1)
+        if self.wave > 1 then
+            self.currentState = "SHOP"
+            self.shop:open()
+            self.shop:unlockWeapons(self.wave)
+            self.shopTimer = 0
+        else
+            -- For wave 1, just proceed to next wave
+            self:startNextWave()
         end
     end
     
-    ui:setEnemiesRemaining(#enemies)
+    -- Handle wave cooldown (for wave 1 transition)
+    if self.waveCleared and self.currentState == "PLAYING" then
+        self.waveTimer = self.waveTimer + dt
+        if self.waveTimer >= self.waveCooldown then
+            self:startNextWave()
+        end
+    end
+    
+    ui:setEnemiesRemaining(self.enemiesPerWave - self.enemiesKilledThisWave)
+end
+
+function GameManager:startNextWave()
+    -- Reset wave tracking
+    self.enemiesSpawnedThisWave = 0
+    self.enemiesKilledThisWave = 0
+    self.waveCleared = false
+    self.spawnTimer = 0
+    
+    -- Increase difficulty for next wave
+    self.wave = self.wave + 1
+    self.enemiesPerWave = math.min(30, 5 + self.wave * 2)
+    self.difficultyMultiplier = 1.0 + (self.wave - 1) * 0.1
+    self.spawnInterval = math.max(0.5, 2.0 - (self.wave - 1) * 0.1)
 end
 
 function GameManager:updateEnemySpawning(dt, enemies)
-    if not self.waveCleared and #enemies < self.maxEnemies then
+    if not self.waveCleared and #enemies < self.maxEnemies and self.enemiesSpawnedThisWave < self.enemiesPerWave then
         self.spawnTimer = self.spawnTimer + dt
         if self.spawnTimer >= self.spawnInterval then
             self:spawnEnemy(enemies)
@@ -154,7 +192,13 @@ function GameManager:spawnEnemy(enemies)
     if self.createEnemy then
         local enemy = self.createEnemy(x, y, enemyType)
         table.insert(enemies, enemy)
+        self.enemiesSpawnedThisWave = self.enemiesSpawnedThisWave + 1
     end
+end
+
+-- Method to track enemy kills (call this when an enemy dies)
+function GameManager:enemyKilled()
+    self.enemiesKilledThisWave = self.enemiesKilledThisWave + 1
 end
 
 function GameManager:updatePickupSpawning(dt)
@@ -249,6 +293,8 @@ function GameManager:reset()
     self.pickupSpawnTimer = 0
     self.pickups = {}
     self.waveCleared = false
+    self.shop = Shop:new()
+    self.shopTimer = 0
 end
 
 function GameManager:getState()
@@ -257,6 +303,67 @@ end
 
 function GameManager:setState(state)
     self.currentState = state
+end
+
+-- Shop interaction methods
+function GameManager:isShopOpen()
+    return self.currentState == "SHOP"
+end
+
+function GameManager:getShop()
+    return self.shop
+end
+
+function GameManager:getShopTimeLeft()
+    return math.max(0, self.shopDuration - self.shopTimer)
+end
+
+function GameManager:buyItem(player, itemType, itemData)
+    if not self:isShopOpen() then
+        return false, "Shop is not open"
+    end
+    
+    local cost = 0
+    local success = false
+    
+    if itemType == "weapon" then
+        cost = self.shop:getWeaponCost(itemData.weaponType)
+        if player:spendMoney(cost) then
+            success = player:addWeapon(itemData.weaponType)
+            if not success then
+                player:addMoney(cost)  -- Refund if weapon couldn't be added
+                return false, "Already have this weapon"
+            end
+        else
+            return false, "Not enough money"
+        end
+    elseif itemType == "ammo" then
+        cost = self.shop:getAmmoCost(itemData.ammoType)
+        if player:spendMoney(cost) then
+            -- Convert shop ammo type to weapons ammo type
+            local Weapons = require('weapons')
+            local weaponsAmmoType = nil
+            if itemData.ammoType == "9mm" then
+                weaponsAmmoType = Weapons.AMMO_TYPES.AMMO_9MM
+            elseif itemData.ammoType == ".30-06" then
+                weaponsAmmoType = Weapons.AMMO_TYPES.AMMO_3006
+            end
+            player:addAmmo(itemData.amount, weaponsAmmoType)
+            success = true
+        else
+            return false, "Not enough money"
+        end
+    elseif itemType == "health" then
+        cost = self.shop:getHealthCost(itemData.healthType)
+        if player:spendMoney(cost) then
+            player:heal(itemData.amount)
+            success = true
+        else
+            return false, "Not enough money"
+        end
+    end
+    
+    return success, success and "Purchase successful" or "Purchase failed"
 end
 
 return GameManager

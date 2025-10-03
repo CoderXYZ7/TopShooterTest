@@ -59,6 +59,23 @@ Weapons.TYPES = {
         canAimWhileShooting = true,
         collateral = 2,  -- Can hit up to 2 enemies in line
         collateralFalloff = 0.7  -- 30% damage reduction per enemy
+    },
+    HMG = {
+        name = "Heavy Machine Gun",
+        damage = 20,
+        fireRate = 6.0,  -- Very fast firing
+        ammoCapacity = 60,
+        reloadTime = 3.5,
+        accuracy = 0.75,
+        range = 400,
+        maxRange = 999,  -- Maximum effective range with falloff
+        animationSpeed = 2.0,
+        muzzleOffset = {x = 4, y = -28},
+        ammoType = Weapons.AMMO_TYPES.AMMO_9MM,
+        canMoveWhileShooting = false,
+        canAimWhileShooting = true,
+        collateral = 4,  -- Can hit up to 4 enemies in line
+        collateralFalloff = 0.4  -- 60% damage reduction per enemy
     }
 }
 

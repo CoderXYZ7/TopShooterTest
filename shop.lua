@@ -24,6 +24,11 @@ Shop.WEAPON_COSTS = {
         cost = 300,
         name = "Submachine Gun",
         description = "Fast firing close-range weapon"
+    },
+    HMG = {
+        cost = 800,
+        name = "Heavy Machine Gun",
+        description = "High capacity, rapid fire support weapon"
     }
 }
 
@@ -84,6 +89,9 @@ function Shop:unlockWeapons(wave)
     end
     if wave >= 3 and not self:isWeaponUnlocked("BOLT_ACTION") then
         table.insert(self.availableWeapons, "BOLT_ACTION")
+    end
+    if wave >= 5 and not self:isWeaponUnlocked("HMG") then
+        table.insert(self.availableWeapons, "HMG")
     end
 end
 

@@ -104,6 +104,9 @@ function love.update(dt)
             local weaponConfig = Weapons.TYPES[weapon.type]
             local hitEnemies = game.shooting:shootRay(game.player, game.enemies, weapon.accuracy, weapon.range, weapon.maxRange, weaponConfig.collateral, weaponConfig.collateralFalloff)
             
+            -- Track enemies that died from this shot
+            local deadEnemyIndices = {}
+            
             for _, hit in ipairs(hitEnemies) do
                 -- Calculate damage based on distance falloff
                 local baseDamage = weapon.damage
@@ -123,18 +126,24 @@ function love.update(dt)
                 
                 -- Damage the enemy with calculated damage
                 local enemy = game.enemies[hit.enemyIndex]
-                if enemy:takeDamage(finalDamage) then
+                if enemy and enemy:takeDamage(finalDamage) then
                     -- Enemy died from this shot
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)
                     game.ui:addScore(enemy:getScore())
                     game.gameManager:enemyKilled()
-                    table.remove(game.enemies, hit.enemyIndex)
+                    table.insert(deadEnemyIndices, hit.enemyIndex)
                 else
                     -- Enemy hit but not killed
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)
                 end
+            end
+            
+            -- Remove dead enemies in reverse order to avoid index shifting issues
+            table.sort(deadEnemyIndices, function(a, b) return a > b end)
+            for _, index in ipairs(deadEnemyIndices) do
+                table.remove(game.enemies, index)
             end
         end
         

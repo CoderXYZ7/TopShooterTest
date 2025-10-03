@@ -59,12 +59,11 @@ function GameManager:update(dt, player, enemies, particles, ui)
         -- Handle shop state
         self.shopTimer = self.shopTimer + dt
         
-        -- Close shop when time runs out or player presses enter
-        if self.shopTimer >= self.shopDuration or love.keyboard.isDown('return') then
+        -- Close shop when time runs out or player presses escape
+        if self.shopTimer >= self.shopDuration or love.keyboard.isDown('escape') then
             self.currentState = "PLAYING"
             self.shop:close()
-            self.waveCleared = false
-            self.spawnTimer = 0
+            self:startNextWave()
         end
         
     elseif self.currentState == "GAME_OVER" or self.currentState == "VICTORY" then

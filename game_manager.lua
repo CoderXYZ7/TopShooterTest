@@ -32,7 +32,7 @@ end
 function GameManager:update(dt, player, enemies, particles, ui)
     if self.currentState == "PLAYING" then
         -- Update wave system
-        self:updateWaveSystem(dt, enemies, ui)
+        self:updateWaveSystem(dt, enemies, ui, player)
         
         -- Update enemy spawning
         self:updateEnemySpawning(dt, enemies)
@@ -78,7 +78,7 @@ function GameManager:update(dt, player, enemies, particles, ui)
     return false
 end
 
-function GameManager:updateWaveSystem(dt, enemies, ui)
+function GameManager:updateWaveSystem(dt, enemies, ui, player)
     -- Check if wave is cleared (all required enemies spawned and killed)
     if not self.waveCleared and self.enemiesSpawnedThisWave >= self.enemiesPerWave and #enemies == 0 then
         self.waveCleared = true
@@ -86,6 +86,7 @@ function GameManager:updateWaveSystem(dt, enemies, ui)
         
         -- Give player money for clearing wave
         local waveBonus = self.wave * 50
+        player:addMoney(waveBonus)
         ui:addScore(waveBonus)
         
         -- Open shop between waves (except after wave 1)
@@ -286,6 +287,8 @@ function GameManager:reset()
     self.currentState = "PLAYING"
     self.wave = 1
     self.enemiesPerWave = 5
+    self.enemiesSpawnedThisWave = 0
+    self.enemiesKilledThisWave = 0
     self.waveTimer = 0
     self.spawnTimer = 0
     self.difficultyMultiplier = 1.0

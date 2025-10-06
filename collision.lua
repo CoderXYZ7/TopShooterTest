@@ -53,7 +53,67 @@ function Collision:resolveEnemiesEnemies(enemies)
     end
 end
 
+function Collision:resolvePlayerBoundaries(player)
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+
+    -- Boundary collision (treating view edges as solid walls)
+    -- Left boundary
+    if player.x < 0 then
+        player.x = 0
+        player.vx = 0  -- Handle horizontal velocity if it exists
+    end
+
+    -- Right boundary
+    if player.x + player.width > screenW then
+        player.x = screenW - player.width
+        player.vx = 0
+    end
+
+    -- Top boundary
+    if player.y < 0 then
+        player.y = 0
+        player.vy = 0
+    end
+
+    -- Bottom boundary
+    if player.y + player.height > screenH then
+        player.y = screenH - player.height
+        player.vy = 0
+    end
+end
+
+function Collision:resolveEnemiesBoundaries(enemies)
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+
+    for _, enemy in ipairs(enemies) do
+        -- Left boundary
+        if enemy.x < 0 then
+            enemy.x = 0
+        end
+
+        -- Right boundary
+        if enemy.x + enemy.width > screenW then
+            enemy.x = screenW - enemy.width
+        end
+
+        -- Top boundary
+        if enemy.y < 0 then
+            enemy.y = 0
+        end
+
+        -- Bottom boundary
+        if enemy.y + enemy.height > screenH then
+            enemy.y = screenH - enemy.height
+        end
+    end
+end
+
 function Collision:update(player, enemies)
+    -- World boundary collision (truly solid walls)
+    self:resolvePlayerBoundaries(player)
+    self:resolveEnemiesBoundaries(enemies)
+
+    -- Entity collisions
     if #enemies > 0 then
         self:resolvePlayerEnemies(player, enemies)
         self:resolveEnemiesEnemies(enemies)

@@ -19,98 +19,88 @@ function UI:new()
         shopMessageTimer = 0,
         loadoutMode = false,
         selectedLoadoutSlot = 1,
-        selectedInventoryWeapon = 1
+        selectedInventoryWeapon = 1,
+        shopScrollOffset = 0,
+        visibleShopItems = 6  -- Number of items visible in shop at once
     }
     setmetatable(ui, { __index = self })
     return ui
 end
 
 function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierWalkingImages, gameManager)
-    -- Draw main UI panel
+    -- Draw main UI panel - much smaller and cleaner
     love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle('fill', 0, 0, 300, 120)
+    love.graphics.rectangle('fill', 0, 0, 250, 80)
     love.graphics.setColor(1, 1, 1)
     
-    -- Health bar
+    -- Health bar (top left)
     local healthPercent = player.health / player.maxHealth
     love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
-    love.graphics.rectangle('fill', 10, 10, 200, 20)
+    love.graphics.rectangle('fill', 10, 10, 120, 15)
     love.graphics.setColor(1 - healthPercent, healthPercent, 0, 1)
-    love.graphics.rectangle('fill', 10, 10, 200 * healthPercent, 20)
+    love.graphics.rectangle('fill', 10, 10, 120 * healthPercent, 15)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print("Health: " .. math.ceil(player.health) .. "/" .. player.maxHealth, 15, 12)
+    love.graphics.print(math.ceil(player.health) .. "/" .. player.maxHealth, 15, 12)
     
-    -- Ammo display with weapon system and inventory - showing [Loaded]/[Inventory] format
+    -- Consolidated weapon info (top right)
     local currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType = player:getWeaponInfo()
-    love.graphics.print("Ammo: " .. currentAmmo .. "/" .. inventoryAmmo, 10, 40)
-    love.graphics.print("Weapon: " .. weaponName, 10, 55)
-    love.graphics.print("Ammo Type: " .. ammoType, 10, 70)
-    love.graphics.print("Magazine: " .. currentAmmo .. "/" .. maxAmmo, 10, 85)
+    love.graphics.print(weaponName .. ": " .. currentAmmo .. "/" .. inventoryAmmo, 140, 12)
     
+    -- Game stats (bottom row)
+    love.graphics.print("Wave: " .. self.wave, 10, 35)
+    love.graphics.print("$" .. player:getMoney(), 80, 35)
+    love.graphics.print("Score: " .. self.score, 140, 35)
+    
+    -- Enemies remaining and time (second bottom row)
+    love.graphics.print("Enemies: " .. self.enemiesRemaining, 10, 50)
+    local minutes = math.floor(self.timeSurvived / 60)
+    local seconds = math.floor(self.timeSurvived % 60)
+    love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 140, 50)
+    
+    -- Dash cooldown indicator (small and clean)
+    if player.dashCooldown > 0 then
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        love.graphics.rectangle('fill', 10, 65, 60, 10)
+        love.graphics.setColor(1, 0.5, 0, 1)
+        love.graphics.rectangle('fill', 10, 65, 60 * (1 - player.dashCooldown/1.5), 10)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print("DASH", 15, 66)
+    else
+        love.graphics.setColor(0.2, 0.8, 0.2, 1)
+        love.graphics.print("DASH", 15, 66)
+        love.graphics.setColor(1, 1, 1)
+    end
+    
+    -- Reload indicator (when reloading)
     if player:isReloading() then
         local reloadPercent = player:getReloadProgress()
         love.graphics.setColor(1, 0.8, 0, 0.8)
-        love.graphics.rectangle('fill', 80, 95, 100 * reloadPercent, 5)
+        love.graphics.rectangle('fill', 80, 65, 60 * reloadPercent, 10)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.print("RELOADING", 10, 100)
-    end
-    
-    -- Score and wave
-    love.graphics.print("Score: " .. self.score, 150, 40)
-    love.graphics.print("Wave: " .. self.wave, 150, 55)
-    love.graphics.print("Enemies: " .. self.enemiesRemaining, 150, 70)
-    
-    -- Time survived
-    local minutes = math.floor(self.timeSurvived / 60)
-    local seconds = math.floor(self.timeSurvived % 60)
-    love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 150, 70)
-    
-    -- Money display
-    love.graphics.print("Money: $" .. player:getMoney(), 150, 85)
-    
-    -- High score
-    if self.highScore > 0 then
-        love.graphics.print("High Score: " .. self.highScore, 150, 100)
-    end
-    
-    -- Dash cooldown indicator
-    if player.dashCooldown > 0 then
-        love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
-        love.graphics.rectangle('fill', 220, 10, 70, 15)
-        love.graphics.setColor(1, 0.5, 0, 1)
-        love.graphics.rectangle('fill', 220, 10, 70 * (1 - player.dashCooldown/1.5), 15)
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("DASH", 225, 12)
-    else
-        love.graphics.setColor(0.2, 0.8, 0.2, 1)
-        love.graphics.print("DASH READY", 225, 12)
-        love.graphics.setColor(1, 1, 1)
+        love.graphics.print("RELOAD", 85, 66)
     end
     
     -- Draw inventory slots
     self:drawInventory(player)
     
-    -- Debug information
+    -- Debug information (moved to bottom right to avoid clutter)
     if debug then
         local walkingFrame = math.floor(walkingFrameTime / walkingFrameDuration) % #soldierWalkingImages + 1
-        love.graphics.print("walkingFrame: " .. walkingFrame, 310, 10)
-        love.graphics.print("FPS: " .. love.timer.getFPS(), 310, 25)
-        love.graphics.print("Player: " .. math.floor(player.x) .. ", " .. math.floor(player.y), 310, 40)
+        love.graphics.print("FPS: " .. love.timer.getFPS(), love.graphics.getWidth() - 100, 10)
+        love.graphics.print("Frame: " .. walkingFrame, love.graphics.getWidth() - 100, 25)
+        love.graphics.print("Pos: " .. math.floor(player.x) .. "," .. math.floor(player.y), love.graphics.getWidth() - 100, 40)
     end
     
-    -- Tutorial messages
+    -- Tutorial messages (simplified and less intrusive)
     if self.showTutorial and self.tutorialTime < 10 then
         self.tutorialTime = self.tutorialTime + love.timer.getDelta()
         love.graphics.setColor(1, 1, 1, 0.8)
-        love.graphics.print("WASD: Move", 500, 10)
-        love.graphics.print("Mouse: Aim and Shoot", 500, 25)
-        love.graphics.print("R: Reload", 500, 40)
-        love.graphics.print("SPACE: Dash", 500, 55)
+        love.graphics.print("WASD: Move | Mouse: Aim/Shoot | R: Reload | SPACE: Dash", 400, 10)
         love.graphics.setColor(1, 1, 1)
         
         if self.tutorialTime > 5 then
             love.graphics.setColor(1, 1, 1, 0.6)
-            love.graphics.print("Survive as long as possible!", 500, 80)
+            love.graphics.print("Survive as long as possible!", 400, 30)
             love.graphics.setColor(1, 1, 1)
         end
     end
@@ -183,6 +173,7 @@ function UI:reset()
     self.victory = false
     self.showTutorial = true
     self.tutorialTime = 0
+    self.shopScrollOffset = 0
 end
 
 function UI:getScore()
@@ -241,7 +232,7 @@ function UI:drawInventory(player)
     end
 end
 
--- Shop display methods
+-- Shop display methods with scrolling
 function UI:drawShop(gameManager, player)
     if not gameManager:isShopOpen() then
         return
@@ -249,21 +240,47 @@ function UI:drawShop(gameManager, player)
     
     local shop = gameManager:getShop()
     local timeLeft = gameManager:getShopTimeLeft()
+    local items = shop:getAvailableItems()
+    
+    -- Calculate scroll bounds
+    local maxScroll = math.max(0, #items - self.visibleShopItems) * 60
     
     -- Draw shop background
     love.graphics.setColor(0, 0, 0, 0.9)
     love.graphics.rectangle('fill', 100, 100, love.graphics.getWidth() - 200, love.graphics.getHeight() - 200)
     
-    -- Draw shop header
+    -- Draw shop header (compact)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print("WEAPONS SHOP - Wave " .. self.wave, love.graphics.getWidth()/2 - 100, 120)
-    love.graphics.print("Time left: " .. math.ceil(timeLeft) .. "s", love.graphics.getWidth()/2 - 50, 140)
-    love.graphics.print("Money: $" .. player:getMoney(), love.graphics.getWidth()/2 - 50, 160)
+    love.graphics.print("SHOP - Wave " .. self.wave .. " | $" .. player:getMoney() .. " | " .. math.ceil(timeLeft) .. "s", 
+                       love.graphics.getWidth()/2 - 150, 120)
     
-    -- Draw available items
-    local items = shop:getAvailableItems()
-    for i, item in ipairs(items) do
-        local y = 200 + (i - 1) * 60
+    -- Draw category tabs
+    local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+    local tabWidth = 120
+    for i, category in ipairs(categories) do
+        local x = 150 + (i - 1) * tabWidth
+        if shop.selectedCategory == category then
+            love.graphics.setColor(0.2, 0.4, 0.8, 0.9)
+        else
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        end
+        love.graphics.rectangle('fill', x, 150, tabWidth - 5, 25)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(category, x + 10, 155)
+    end
+    
+    -- Draw visible items with scrolling
+    local startIndex = math.floor(self.shopScrollOffset / 60) + 1
+    local endIndex = math.min(#items, startIndex + self.visibleShopItems - 1)
+    
+    for i = startIndex, endIndex do
+        local item = items[i]
+        local y = 200 + (i - startIndex) * 60 - (self.shopScrollOffset % 60)
+        
+        -- Skip items that are scrolled out of view
+        if y < 200 or y > 200 + (self.visibleShopItems * 60) then
+            goto continue
+        end
         
         -- Calculate actual cost and level for upgrades
         local actualCost = item.cost
@@ -283,12 +300,12 @@ function UI:drawShop(gameManager, player)
         end
         love.graphics.rectangle('fill', 150, y, love.graphics.getWidth() - 300, 50)
         
-        -- Draw item info
+        -- Draw item info (compact)
         love.graphics.setColor(1, 1, 1)
         
         if item.type == "upgrade" then
             -- Show upgrade with level info
-            love.graphics.print(item.name .. " (Level " .. currentLevel .. "/" .. maxLevel .. ")", 160, y + 5)
+            love.graphics.print(item.name .. " Lvl " .. currentLevel .. "/" .. maxLevel, 160, y + 5)
             love.graphics.print(item.description, 160, y + 20)
         else
             -- Show regular items
@@ -296,6 +313,7 @@ function UI:drawShop(gameManager, player)
             love.graphics.print(item.description, 160, y + 20)
         end
         
+        -- Draw cost and purchase button
         love.graphics.print("$" .. actualCost, love.graphics.getWidth() - 200, y + 15)
         
         -- Draw purchase button
@@ -311,6 +329,30 @@ function UI:drawShop(gameManager, player)
             love.graphics.setColor(1, 1, 1)
             love.graphics.print("BUY", love.graphics.getWidth() - 100, y + 18)
         end
+        
+        ::continue::
+    end
+    
+    -- Draw scroll indicators if needed
+    if #items > self.visibleShopItems then
+        -- Scroll bar
+        local scrollBarHeight = 200
+        local scrollBarWidth = 10
+        local scrollBarX = love.graphics.getWidth() - 120
+        local scrollBarY = 200
+        
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        love.graphics.rectangle('fill', scrollBarX, scrollBarY, scrollBarWidth, scrollBarHeight)
+        
+        local scrollThumbHeight = scrollBarHeight * (self.visibleShopItems / #items)
+        local scrollThumbY = scrollBarY + (self.shopScrollOffset / maxScroll) * (scrollBarHeight - scrollThumbHeight)
+        
+        love.graphics.setColor(0.6, 0.6, 0.8, 0.9)
+        love.graphics.rectangle('fill', scrollBarX, scrollThumbY, scrollBarWidth, scrollThumbHeight)
+        
+        -- Scroll instructions
+        love.graphics.setColor(1, 1, 1, 0.6)
+        love.graphics.print("PG UP/DN: Scroll", scrollBarX - 100, scrollBarY + scrollBarHeight + 10)
     end
     
     -- Draw shop message
@@ -320,9 +362,10 @@ function UI:drawShop(gameManager, player)
         love.graphics.setColor(1, 1, 1)
     end
     
-    -- Draw instructions
+    -- Draw instructions (compact)
     love.graphics.setColor(1, 1, 1, 0.6)
-    love.graphics.print("Press ENTER to continue to next wave", love.graphics.getWidth()/2 - 150, love.graphics.getHeight() - 100)
+    love.graphics.print("ENTER: Buy | ARROWS: Navigate | TAB: Categories | ESC: Continue", 
+                       love.graphics.getWidth()/2 - 200, love.graphics.getHeight() - 100)
     love.graphics.setColor(1, 1, 1)
 end
 

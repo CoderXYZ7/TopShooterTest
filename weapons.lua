@@ -4,7 +4,8 @@ local Weapons = {}
 -- Ammo types
 Weapons.AMMO_TYPES = {
     AMMO_9MM = "9mm",
-    AMMO_3006 = ".30-06"
+    AMMO_3006 = ".30-06",
+    AMMO_12GAUGE = "12 gauge"
 }
 
 -- Weapon types with different characteristics
@@ -36,7 +37,7 @@ Weapons.TYPES = {
         range = 300,
         maxRange = 999,  -- Maximum effective range with falloff
         animationSpeed = 1.5,
-        muzzleOffset = {x = 3, y = -25},
+        muzzleOffset = {x = 0, y = 0},
         ammoType = Weapons.AMMO_TYPES.AMMO_9MM,
         canMoveWhileShooting = true,
         canAimWhileShooting = true,
@@ -76,13 +77,35 @@ Weapons.TYPES = {
         canAimWhileShooting = true,
         collateral = 4,  -- Can hit up to 4 enemies in line
         collateralFalloff = 0.4  -- 60% damage reduction per enemy
+    },
+    SHOTGUN = {
+        name = "Shotgun",
+        damage = 3.5,      -- Damage per pellet (total up to 8 pellets)
+        fireRate = 1.2,   -- Slower fire rate for shotgun
+        ammoCapacity = 6, -- Fewer shells
+        reloadTime = 2.5,
+        accuracy = 0.8,   -- Base accuracy (individual pellets spread)
+        range = 200,      -- Medium-short range
+        maxRange = 999,   -- Limited effective range
+        animationSpeed = 1.0,
+        muzzleOffset = {x = 0, y = 00},  -- Slightly different muzzle position
+        ammoType = Weapons.AMMO_TYPES.AMMO_12GAUGE,  -- Using 12 gauge shells
+        canMoveWhileShooting = false,
+        canAimWhileShooting = true,
+        collateral = 8,   -- Up to 8 enemies can be hit (one per pellet)
+        collateralFalloff = 1.0,  -- Full damage per pellet
+        specificVars = {   -- Weapon-specific variables
+            pelletSpread = math.pi/16,  -- Total spread angle in radians (30-degree cone, 60-degree total)
+            pellets = 8,  -- Number of pellets per shot
+            incrementalReload = true  -- Enables bullet-by-bullet loading animation
+        }
     }
 }
 
 function Weapons:new(weaponType)
     local type = weaponType or "BOLT_ACTION"
     local config = Weapons.TYPES[type]
-    
+
     local weapon = {
         type = type,
         name = config.name,
@@ -101,24 +124,29 @@ function Weapons:new(weaponType)
         canAimWhileShooting = config.canAimWhileShooting,
         lastShotTime = 0,
         isReloading = false,
-        reloadProgress = 0
+        reloadProgress = 0,
+        -- Incremental reload tracking
+        incrementalReload = (config.specificVars and config.specificVars.incrementalReload) or false,
+        shellsLoaded = 0,  -- For incremental loading
+        nextShellTime = nil  -- Time when next shell should be loaded
     }
     setmetatable(weapon, { __index = self })
     return weapon
 end
 
 function Weapons:canShoot(currentTime)
-    if self.isReloading then
+    -- Allow shooting during incremental reload to interrupt it
+    if self.isReloading and not self.incrementalReload then
         return false
     end
-    
+
     if self.currentAmmo <= 0 then
         return false
     end
-    
+
     local timeSinceLastShot = currentTime - self.lastShotTime
     local shotCooldown = 1.0 / self.fireRate
-    
+
     return timeSinceLastShot >= shotCooldown
 end
 
@@ -126,10 +154,18 @@ function Weapons:shoot(currentTime)
     if not self:canShoot(currentTime) then
         return false
     end
-    
+
+    -- Cancel incremental reload if shooting during it
+    if self.isReloading and self.incrementalReload then
+        self.isReloading = false
+        self.shellsLoaded = 0
+        self.nextShellTime = nil
+        -- Keep the ammo that was already loaded, discard the rest
+    end
+
     self.currentAmmo = self.currentAmmo - 1
     self.lastShotTime = currentTime
-    
+
     return true
 end
 
@@ -153,25 +189,67 @@ function Weapons:updateReload(dt, playerAmmoInventory)
     if not self.isReloading then
         return false
     end
-    
-    self.reloadProgress = self.reloadProgress + dt
-    
-    if self.reloadProgress >= self.reloadTime then
-        -- Calculate how much ammo we need to fill the weapon
-        local ammoNeeded = self.ammoCapacity - self.currentAmmo
-        local inventoryAmmo = playerAmmoInventory[self.ammoType] or 0
-        
-        -- Take ammo from inventory, but not more than available
-        local ammoToTake = math.min(ammoNeeded, inventoryAmmo)
-        
-        -- Update weapon ammo and inventory
-        self.currentAmmo = self.currentAmmo + ammoToTake
-        playerAmmoInventory[self.ammoType] = inventoryAmmo - ammoToTake
-        
-        self.isReloading = false
-        return true  -- Reload complete
+
+    -- Handle incremental reloading (shell by shell)
+    if self.incrementalReload then
+        -- Set next loading time if not set
+        if not self.nextShellTime then
+            self.nextShellTime = (self.ammoCapacity - self.currentAmmo) > 0 and (self.reloadTime / self.ammoCapacity) or self.reloadTime
+        end
+
+        self.reloadProgress = self.reloadProgress + dt
+
+        -- Check if it's time to load the next shell
+        if self.reloadProgress >= self.nextShellTime then
+            -- Try to load a shell
+            local inventoryAmmo = playerAmmoInventory[self.ammoType] or 0
+            if inventoryAmmo > 0 and self.currentAmmo < self.ammoCapacity then
+                -- Load one shell
+                self.currentAmmo = self.currentAmmo + 1
+                self.shellsLoaded = self.shellsLoaded + 1
+                playerAmmoInventory[self.ammoType] = inventoryAmmo - 1
+
+                -- Set time for next shell (or remaining time if this was the last)
+                if self.currentAmmo < self.ammoCapacity then
+                    self.nextShellTime = self.nextShellTime + (self.reloadTime / self.ammoCapacity)
+                end
+            else
+                -- No more ammo available or space to load - complete reload
+                self.isReloading = false
+                self.shellsLoaded = 0
+                self.nextShellTime = nil
+                return true
+            end
+        end
+
+        -- Reload complete when time expired or all capacity filled
+        if self.reloadProgress >= self.reloadTime or self.currentAmmo >= self.ammoCapacity then
+            self.isReloading = false
+            self.shellsLoaded = 0
+            self.nextShellTime = nil
+            return true
+        end
+    else
+        -- Standard reload (load all ammo at once)
+        self.reloadProgress = self.reloadProgress + dt
+
+        if self.reloadProgress >= self.reloadTime then
+            -- Calculate how much ammo we need to fill the weapon
+            local ammoNeeded = self.ammoCapacity - self.currentAmmo
+            local inventoryAmmo = playerAmmoInventory[self.ammoType] or 0
+
+            -- Take ammo from inventory, but not more than available
+            local ammoToTake = math.min(ammoNeeded, inventoryAmmo)
+
+            -- Update weapon ammo and inventory
+            self.currentAmmo = self.currentAmmo + ammoToTake
+            playerAmmoInventory[self.ammoType] = inventoryAmmo - ammoToTake
+
+            self.isReloading = false
+            return true  -- Reload complete
+        end
     end
-    
+
     return false  -- Still reloading
 end
 

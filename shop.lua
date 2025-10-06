@@ -30,13 +30,19 @@ Shop.WEAPON_COSTS = {
         cost = 800,
         name = "Heavy Machine Gun",
         description = "High capacity, rapid fire support weapon"
+    },
+    SHOTGUN = {
+        cost = 600,
+        name = "Shotgun",
+        description = "Close-range pellet weapon with high spread"
     }
 }
 
 -- Ammo types (defined locally to avoid circular dependency)
 Shop.AMMO_TYPES = {
     AMMO_9MM = "9mm",
-    AMMO_3006 = ".30-06"
+    AMMO_3006 = ".30-06",
+    AMMO_12GAUGE = "12 gauge"
 }
 
 -- Ammo costs
@@ -52,6 +58,12 @@ Shop.AMMO_COSTS = {
         amount = 10,
         name = ".30-06 Ammo Pack",
         description = "10 rounds of .30-06 ammunition"
+    },
+    ["12 gauge"] = {
+        cost = 75,
+        amount = 8,
+        name = "12 Gauge Shells",
+        description = "8 shotgun shells"
     }
 }
 
@@ -159,6 +171,9 @@ function Shop:unlockWeapons(wave)
     end
     if wave >= 3 and not self:isWeaponUnlocked("BOLT_ACTION") then
         table.insert(self.availableWeapons, "BOLT_ACTION")
+    end
+    if wave >= 4 and not self:isWeaponUnlocked("SHOTGUN") then
+        table.insert(self.availableWeapons, "SHOTGUN")
     end
     if wave >= 5 and not self:isWeaponUnlocked("HMG") then
         table.insert(self.availableWeapons, "HMG")

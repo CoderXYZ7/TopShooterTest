@@ -11,7 +11,13 @@ Enemy.TYPES = {
         color = {0.3, 0.8, 0.3},
         scale = 0.5,
         attackSpeed = 1.0,  -- Attacks per second
-        attackRange = 80  -- Increased from 50 to 80
+        attackRange = 80, -- Increased from 50 to 80
+        collisionBox = {
+            width = 24,   -- Narrow horizontal hitbox
+            height = 40,  -- Tall vertical hitbox
+            offsetX = 0,  -- Centered horizontally
+            offsetY = -4  -- Slightly higher (head level)
+        }
     },
     FAST_ZOMBIE = {
         speed = 120,
@@ -21,7 +27,13 @@ Enemy.TYPES = {
         color = {0.8, 0.8, 0.3},
         scale = 0.45,
         attackSpeed = 1.5,  -- Faster attacks
-        attackRange = 70  -- Increased from 40 to 70
+        attackRange = 70, -- Increased from 40 to 70
+        collisionBox = {
+            width = 20,   -- Narrow hitbox
+            height = 35,  -- Short hitbox
+            offsetX = 0,
+            offsetY = -2
+        }
     },
     TANK_ZOMBIE = {
         speed = 30,
@@ -31,7 +43,13 @@ Enemy.TYPES = {
         color = {0.8, 0.3, 0.3},
         scale = 0.7,
         attackSpeed = 0.7,  -- Slower attacks
-        attackRange = 90  -- Increased from 60 to 90
+        attackRange = 90, -- Increased from 60 to 90
+        collisionBox = {
+            width = 35,   -- Wide hitbox
+            height = 50,  -- Very tall hitbox
+            offsetX = 0,
+            offsetY = -2
+        }
     }
 }
 
@@ -169,11 +187,16 @@ function Enemy:draw(assets, debug)
     if debug then
         love.graphics.setColor(0, 0, 1, 0.5)
         love.graphics.rectangle('line', self.x, self.y, self.width, self.height)
-        
+
+        -- Bounding box visualization (collision box used for shooting)
+        local boxX, boxY, boxW, boxH = self:getBoundingBox()
+        love.graphics.setColor(1, 0, 1, 0.8)  -- Magenta for hitboxes
+        love.graphics.rectangle('line', boxX, boxY, boxW, boxH)
+
         -- Attack range visualization
         love.graphics.setColor(1, 0, 0, 0.3)
         love.graphics.circle('line', self.x + self.width/2, self.y + self.height/2, self.attackRange)
-        
+
         love.graphics.setColor(1, 1, 1)
     else
         love.graphics.setColor(1, 1, 1)
@@ -187,6 +210,19 @@ end
 
 function Enemy:getCenter()
     return self.x + self.width/2, self.y + self.height/2
+end
+
+function Enemy:getBoundingBox()
+    local config = Enemy.TYPES[self.type]
+    local centerX, centerY = self:getCenter()
+
+    -- Apply collision box offset from enemy center
+    local boxX = centerX + (config.collisionBox.offsetX or 0) - config.collisionBox.width / 2
+    local boxY = centerY + (config.collisionBox.offsetY or 0) - config.collisionBox.height / 2
+    local boxWidth = config.collisionBox.width
+    local boxHeight = config.collisionBox.height
+
+    return boxX, boxY, boxWidth, boxHeight
 end
 
 function Enemy:getType()

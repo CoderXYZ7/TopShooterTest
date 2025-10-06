@@ -98,11 +98,31 @@ function love.update(dt)
             -- Create muzzle flash at correct weapon position
             local mx, my = game.player:getMuzzlePosition()
             game.particles:createMuzzleFlash(mx, my, game.player.angle)
-            
+
             -- Perform shooting with weapon damage, range falloff, and collateral damage
             local weapon = game.player:getCurrentWeapon()
             local weaponConfig = Weapons.TYPES[weapon.type]
             local hitEnemies = game.shooting:shootRay(game.player, game.enemies, weapon.accuracy, weapon.range, weapon.maxRange, weaponConfig.collateral, weaponConfig.collateralFalloff)
+
+            -- Create bullet tracer(s) - single for normal weapons, multiple for shotguns
+            local weapon = game.player:getCurrentWeapon()
+            local weaponConfig = Weapons.TYPES[weapon.type]
+
+            if weaponConfig.ammoType == Weapons.AMMO_TYPES.AMMO_12GAUGE and hitEnemies.pelletHits then
+                -- Multi-pellet shotgun tracers - create one tracer per pellet
+                for i, pelletHit in ipairs(hitEnemies.pelletHits) do
+                    local pelletTracerDistance = pelletHit.hitDistance or game.shooting:getMaxWorldBoundaryDistance(game.player)
+                    game.particles:createBulletTracer(mx, my, pelletHit.angle, pelletTracerDistance)
+                end
+            else
+                -- Single tracer for normal weapons (pistol, rifles, etc.)
+                local tracerDistance = game.shooting:getMaxWorldBoundaryDistance(game.player)
+                if #hitEnemies > 0 then
+                    local lastDamagedEnemy = hitEnemies[#hitEnemies]
+                    tracerDistance = math.min(tracerDistance, lastDamagedEnemy.hitDistance)
+                end
+                game.particles:createBulletTracer(mx, my, game.player.angle, tracerDistance)
+            end
             
             -- Track enemies that died from this shot
             local deadEnemyIndices = {}
@@ -199,6 +219,9 @@ function love.draw()
         -- Draw pickups
         game.gameManager:drawPickups()
 
+        -- Draw particles that appear behind entities (bullet tracers, blood)
+        game.particles:drawBehindEntities()
+
         -- Draw enemies
         for _, enemy in ipairs(game.enemies) do
             enemy:draw(game.assets, game.DEBUG)
@@ -207,8 +230,11 @@ function love.draw()
         -- Draw player
         game.player:draw(game.assets, game.DEBUG)
 
-        -- Draw particles
-        game.particles:draw()
+        -- Draw particles that appear across entities (muzzle flash, dash trail)
+        game.particles:drawAcrossEntities()
+
+        -- Draw particles that appear above entities (pickup effects)
+        game.particles:drawAboveEntities()
 
         -- Draw shooting ray
         game.shooting:drawRay(game.player, game.DEBUG)
@@ -270,8 +296,28 @@ function love.keypressed(key)
         
         if key == 'up' then
             shop.selectedItem = math.max(1, shop.selectedItem - 1)
+            -- Auto-scroll when moving up
+            if shop.selectedItem <= math.floor(game.ui.shopScrollOffset / 60) then
+                game.ui.shopScrollOffset = math.max(0, game.ui.shopScrollOffset - 60)
+            end
         elseif key == 'down' then
             shop.selectedItem = math.min(#items, shop.selectedItem + 1)
+            -- Auto-scroll when moving down
+            local visibleBottomIndex = math.floor(game.ui.shopScrollOffset / 60) + game.ui.visibleShopItems
+            if shop.selectedItem > visibleBottomIndex then
+                game.ui.shopScrollOffset = math.min((#items - game.ui.visibleShopItems) * 60, game.ui.shopScrollOffset + 60)
+            end
+        elseif key == 'pageup' then
+            -- Scroll up one page
+            game.ui.shopScrollOffset = math.max(0, game.ui.shopScrollOffset - (game.ui.visibleShopItems * 60))
+            -- Update selected item to match scroll position
+            shop.selectedItem = math.max(1, math.floor(game.ui.shopScrollOffset / 60) + 1)
+        elseif key == 'pagedown' then
+            -- Scroll down one page
+            local maxScroll = math.max(0, #items - game.ui.visibleShopItems) * 60
+            game.ui.shopScrollOffset = math.min(maxScroll, game.ui.shopScrollOffset + (game.ui.visibleShopItems * 60))
+            -- Update selected item to match scroll position
+            shop.selectedItem = math.min(#items, math.floor(game.ui.shopScrollOffset / 60) + game.ui.visibleShopItems)
         elseif key == 'return' then
             -- Buy selected item
             if #items > 0 then
@@ -279,30 +325,48 @@ function love.keypressed(key)
                 local success, message = game.gameManager:buyItem(game.player, selectedItem.type, selectedItem)
                 game.ui:setShopMessage(message)
             end
+        elseif key == 'tab' then
+            -- Switch shop categories
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local currentIndex = 1
+            for i, cat in ipairs(categories) do
+                if shop.selectedCategory == cat then
+                    currentIndex = i
+                    break
+                end
+            end
+            local nextIndex = (currentIndex % #categories) + 1
+            shop.selectedCategory = categories[nextIndex]
+            shop.selectedItem = 1
+            game.ui.shopScrollOffset = 0
         elseif key == 'left' then
-            -- Switch shop categories
-            if shop.selectedCategory == "WEAPONS" then
-                shop.selectedCategory = "UPGRADES"
-            elseif shop.selectedCategory == "AMMO" then
-                shop.selectedCategory = "WEAPONS"
-            elseif shop.selectedCategory == "HEALTH" then
-                shop.selectedCategory = "AMMO"
-            elseif shop.selectedCategory == "UPGRADES" then
-                shop.selectedCategory = "HEALTH"
+            -- Switch shop categories (backward)
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local currentIndex = 1
+            for i, cat in ipairs(categories) do
+                if shop.selectedCategory == cat then
+                    currentIndex = i
+                    break
+                end
             end
+            local prevIndex = ((currentIndex - 2) % #categories) + 1
+            shop.selectedCategory = categories[prevIndex]
             shop.selectedItem = 1
+            game.ui.shopScrollOffset = 0
         elseif key == 'right' then
-            -- Switch shop categories
-            if shop.selectedCategory == "WEAPONS" then
-                shop.selectedCategory = "AMMO"
-            elseif shop.selectedCategory == "AMMO" then
-                shop.selectedCategory = "HEALTH"
-            elseif shop.selectedCategory == "HEALTH" then
-                shop.selectedCategory = "UPGRADES"
-            elseif shop.selectedCategory == "UPGRADES" then
-                shop.selectedCategory = "WEAPONS"
+            -- Switch shop categories (forward)
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local currentIndex = 1
+            for i, cat in ipairs(categories) do
+                if shop.selectedCategory == cat then
+                    currentIndex = i
+                    break
+                end
             end
+            local nextIndex = (currentIndex % #categories) + 1
+            shop.selectedCategory = categories[nextIndex]
             shop.selectedItem = 1
+            game.ui.shopScrollOffset = 0
         end
     end
 end

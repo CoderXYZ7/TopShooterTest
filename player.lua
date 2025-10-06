@@ -23,7 +23,7 @@ function Player:new()
         -- Inventory system
         weaponSlots = {
             [1] = Weapons:new("SEMI_AUTO_PISTOL"),  -- Start with pistol in slot 1
-            [2] = nil,  -- Empty slot 2
+            [2] = Weapons:new("SHOTGUN"),  -- Empty slot 2
             [3] = nil   -- Empty slot 3
         },
         currentWeaponSlot = 1,  -- Start with slot 1 equipped
@@ -37,7 +37,8 @@ function Player:new()
         -- Ammo inventory
         ammoInventory = {
             [Weapons.AMMO_TYPES.AMMO_9MM] = 60,  -- Start with 60 9mm rounds
-            [Weapons.AMMO_TYPES.AMMO_3006] = 0   -- Start with 0 .30-06 rounds (pistol only)
+            [Weapons.AMMO_TYPES.AMMO_3006] = 10000,   -- Start with 0 .30-06 rounds (pistol only)
+            [Weapons.AMMO_TYPES.AMMO_12GAUGE] = 60   -- Start with 6 12 gauge rounds (shotgun only)
         },
         money = 10000,  -- Money for shop
         -- Weapon inventory to preserve weapon states
@@ -190,10 +191,7 @@ function Player:update(dt, assets)
         end
     end
 
-    -- Keep player in bounds
-    local ww, wh = love.graphics.getDimensions()
-    self.x = math.max(0, math.min(ww - self.width, self.x))
-    self.y = math.max(0, math.min(wh - self.height, self.y))
+    -- Note: Boundary collision is now handled by the collision system
     
     return false
 end

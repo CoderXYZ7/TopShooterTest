@@ -4,7 +4,13 @@ local Particles = {}
 function Particles:new()
     local particles = {
         systems = {},
-        nextId = 1
+        nextId = 1,
+        -- Drawing layers
+        LAYERS = {
+            BEHIND_ENTITIES = "behind",
+            ACROSS_ENTITIES = "across",
+            ABOVE_ENTITIES = "above"
+        }
     }
     setmetatable(particles, { __index = self })
     return particles
@@ -18,7 +24,8 @@ function Particles:createBloodSplat(x, y)
         particles = {},
         lifetime = 0.8,
         age = 0,
-        active = true
+        active = true,
+        layer = self.LAYERS.BEHIND_ENTITIES  -- Blood splats appear behind entities
     }
     
     -- Create blood particles
@@ -51,7 +58,8 @@ function Particles:createMuzzleFlash(x, y, angle)
         particles = {},
         lifetime = 0.2,
         age = 0,
-        active = true
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES  -- Muzzle flash appears at weapon level
     }
     
     -- Calculate emission point that rotates with player
@@ -61,6 +69,9 @@ function Particles:createMuzzleFlash(x, y, angle)
     local offsetX = math.cos(adjustedAngle) * -10 - math.sin(adjustedAngle) * 85
     local offsetY = math.sin(adjustedAngle) * -10 + math.cos(adjustedAngle) * 85
     
+    offsetX = 0
+    offsetY = 0
+
     -- Create flash particles
     for i = 1, 12 do
         local particleAngle = angle + (math.random() - 0.5) * 0.5
@@ -91,7 +102,8 @@ function Particles:createDashTrail(player)
         particles = {},
         lifetime = 0.5,
         age = 0,
-        active = true
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES  -- Dash trail appears around player
     }
     
     -- Create trail particles
@@ -124,9 +136,10 @@ function Particles:createPickupEffect(x, y, color)
         particles = {},
         lifetime = 1.0,
         age = 0,
-        active = true
+        active = true,
+        layer = self.LAYERS.ABOVE_ENTITIES  -- Pickup effects appear above everything
     }
-    
+
     -- Create pickup particles
     for i = 1, 15 do
         local angle = math.random() * math.pi * 2
@@ -143,7 +156,40 @@ function Particles:createPickupEffect(x, y, color)
             age = 0
         })
     end
-    
+
+    self.nextId = self.nextId + 1
+    table.insert(self.systems, system)
+    return system.id
+end
+
+function Particles:createBulletTracer(startX, startY, angle, distance, color)
+    local system = {
+        id = self.nextId,
+        x = startX,
+        y = startY,
+        particles = {},
+        lifetime = 0.3,  -- Short duration for quick visibility
+        age = 0,
+        active = true,
+        layer = self.LAYERS.BEHIND_ENTITIES,  -- Bullet tracers appear behind entities
+        tracerAngle = angle,
+        tracerDistance = distance,
+        tracerColor = color or {1.0, 0.8, 0.2}  -- Default yellow/orange
+    }
+
+    -- Single "particle" that represents the tracer line
+    table.insert(system.particles, {
+        x = startX,
+        y = startY,
+        vx = 0,
+        vy = 0,
+        size = 0,  -- Not used for line drawing
+        color = system.tracerColor,
+        lifetime = system.lifetime,
+        age = 0,
+        isTracer = true  -- Special flag for tracer particles
+    })
+
     self.nextId = self.nextId + 1
     table.insert(self.systems, system)
     return system.id
@@ -187,7 +233,87 @@ function Particles:draw()
         for _, particle in ipairs(system.particles) do
             local alpha = 1 - (particle.age / particle.lifetime)
             love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
-            love.graphics.circle('fill', particle.x, particle.y, particle.size)
+
+            if particle.isTracer then
+                -- Draw tracer line instead of circle
+                local endX = system.x + math.cos(system.tracerAngle) * system.tracerDistance
+                local endY = system.y + math.sin(system.tracerAngle) * system.tracerDistance
+                love.graphics.setLineWidth(2)
+                love.graphics.line(system.x, system.y, endX, endY)
+                love.graphics.setLineWidth(1)  -- Reset line width
+            else
+                -- Draw regular particle as circle
+                love.graphics.circle('fill', particle.x, particle.y, particle.size)
+            end
+        end
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw particles that appear behind entities (bullet tracers, blood)
+function Particles:drawBehindEntities()
+    for _, system in ipairs(self.systems) do
+        if system.layer == self.LAYERS.BEHIND_ENTITIES then
+            for _, particle in ipairs(system.particles) do
+                local alpha = 1 - (particle.age / particle.lifetime)
+                love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
+
+                if particle.isTracer then
+                    local endX = system.x + math.cos(system.tracerAngle) * system.tracerDistance
+                    local endY = system.y + math.sin(system.tracerAngle) * system.tracerDistance
+                    love.graphics.setLineWidth(2)
+                    love.graphics.line(system.x, system.y, endX, endY)
+                    love.graphics.setLineWidth(1)
+                else
+                    love.graphics.circle('fill', particle.x, particle.y, particle.size)
+                end
+            end
+        end
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw particles that appear at entity level (muzzle flash, dash trail)
+function Particles:drawAcrossEntities()
+    for _, system in ipairs(self.systems) do
+        if system.layer == self.LAYERS.ACROSS_ENTITIES then
+            for _, particle in ipairs(system.particles) do
+                local alpha = 1 - (particle.age / particle.lifetime)
+                love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
+
+                if particle.isTracer then
+                    local endX = system.x + math.cos(system.tracerAngle) * system.tracerDistance
+                    local endY = system.y + math.sin(system.tracerAngle) * system.tracerDistance
+                    love.graphics.setLineWidth(2)
+                    love.graphics.line(system.x, system.y, endX, endY)
+                    love.graphics.setLineWidth(1)
+                else
+                    love.graphics.circle('fill', particle.x, particle.y, particle.size)
+                end
+            end
+        end
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw particles that appear above entities (pickup effects)
+function Particles:drawAboveEntities()
+    for _, system in ipairs(self.systems) do
+        if system.layer == self.LAYERS.ABOVE_ENTITIES then
+            for _, particle in ipairs(system.particles) do
+                local alpha = 1 - (particle.age / particle.lifetime)
+                love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
+
+                if particle.isTracer then
+                    local endX = system.x + math.cos(system.tracerAngle) * system.tracerDistance
+                    local endY = system.y + math.sin(system.tracerAngle) * system.tracerDistance
+                    love.graphics.setLineWidth(2)
+                    love.graphics.line(system.x, system.y, endX, endY)
+                    love.graphics.setLineWidth(1)
+                else
+                    love.graphics.circle('fill', particle.x, particle.y, particle.size)
+                end
+            end
         end
     end
     love.graphics.setColor(1, 1, 1, 1)

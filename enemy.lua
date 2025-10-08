@@ -98,23 +98,49 @@ function Enemy:new(x, y, enemyType)
         attackDuration = 1.0 / config.attackSpeed,  -- Duration based on attack speed
         hasDealtDamage = false,
         attackSpeed = config.attackSpeed,
-        DEBUG = false  -- Disable debug output
+        DEBUG = false,  -- Disable debug output
+        
+        -- Pathfinding
+        pathfinding = nil,
+        path = nil,
+        currentWaypoint = 1,
+        pathfindingUpdateInterval = 0.5,  -- Update path every 0.5 seconds
+        pathfindingTimer = 0,
+        waypointReachDist = 20,  -- Distance to consider waypoint reached
+        
+        -- Smooth rotation
+        targetAngle = 0,
+        rotationSpeed = 8  -- Radians per second for rotation interpolation
     }
     setmetatable(enemy, { __index = self })
     return enemy
 end
 
-function Enemy:update(dt, player)
+-- Helper function to interpolate angles with proper wrapping
+local function lerpAngle(from, to, t)
+    local diff = to - from
+    -- Normalize to -pi to pi range
+    while diff > math.pi do diff = diff - 2 * math.pi end
+    while diff < -math.pi do diff = diff + 2 * math.pi end
+    return from + diff * t
+end
+
+function Enemy:update(dt, player, pathfinding)
     self.walkingFrameTime = self.walkingFrameTime + dt + math.random() * 0.01
     self.attackCooldown = math.max(0, self.attackCooldown - dt)
+    self.pathfindingTimer = self.pathfindingTimer + dt
     
-    -- Always use current player position for accurate tracking
-    local dx = player.x - self.x
-    local dy = player.y - self.y
+    -- Store pathfinding reference
+    if pathfinding then
+        self.pathfinding = pathfinding
+    end
+    
+    -- Calculate distance to player
+    local ex, ey = self:getCenter()
+    local px, py = player.x + player.width/2, player.y + player.height/2
+    local dx = px - ex
+    local dy = py - ey
     local dist = math.sqrt(dx*dx + dy*dy)
-    
-    -- Face the player
-    self.angle = math.atan2(dy, dx)
     
     -- Handle attacking state
     if self.isAttacking then
@@ -134,8 +160,50 @@ function Enemy:update(dt, player)
     else
         -- Move towards player if not attacking and in range
         if dist > 0 and dist < 800 then
-            self.x = self.x + (dx/dist) * self.speed * dt
-            self.y = self.y + (dy/dist) * self.speed * dt
+            -- Update pathfinding periodically OR if we don't have a path
+            if self.pathfinding and (self.pathfindingTimer >= self.pathfindingUpdateInterval or not self.path) then
+                self.pathfindingTimer = 0
+                local newPath = self.pathfinding:findPath(ex, ey, px, py)
+                
+                if newPath then
+                    self.path = self.pathfinding:simplifyPath(newPath)
+                    self.currentWaypoint = 1
+                end
+                -- If pathfinding fails, keep old path if we have one
+            end
+            
+            -- Follow path if available
+            if self.path and #self.path > 0 then
+                local waypoint = self.path[self.currentWaypoint]
+                if waypoint then
+                    local wdx = waypoint.x - ex
+                    local wdy = waypoint.y - ey
+                    local wdist = math.sqrt(wdx*wdx + wdy*wdy)
+                    
+                    if wdist < self.waypointReachDist then
+                        -- Reached waypoint, move to next
+                        self.currentWaypoint = self.currentWaypoint + 1
+                        if self.currentWaypoint > #self.path then
+                            -- Reached end of path, request new path immediately
+                            self.path = nil
+                            self.pathfindingTimer = self.pathfindingUpdateInterval -- Trigger immediate recalc
+                        end
+                    else
+                        -- Set target angle towards waypoint
+                        self.targetAngle = math.atan2(wdy, wdx)
+                        
+                        -- Move towards waypoint
+                        self.x = self.x + (wdx/wdist) * self.speed * dt
+                        self.y = self.y + (wdy/wdist) * self.speed * dt
+                    end
+                end
+            else
+                -- No path available - try pathfinding more frequently
+                self.pathfindingTimer = self.pathfindingUpdateInterval * 0.5 -- Try again sooner
+                
+                -- Set target angle towards player when stuck
+                self.targetAngle = math.atan2(dy, dx)
+            end
         end
         
         -- Start attack if close enough and cooldown is ready
@@ -143,15 +211,26 @@ function Enemy:update(dt, player)
             self.isAttacking = true
             self.attackTime = self.attackDuration
             self.attackFrameTime = 0
-            self.attackCooldown = 1.0 / self.attackSpeed  -- Cooldown based on attack speed
+            self.attackCooldown = 1.0 / self.attackSpeed
+            self.path = nil  -- Clear path when attacking
+            
+            -- Set target angle towards player when attacking
+            self.targetAngle = math.atan2(dy, dx)
         end
-        
-        -- Debug: Show attack status in console
-        if self.DEBUG and math.random() < 0.01 then  -- Only print occasionally to avoid spam
-            print(string.format("Enemy %s: dist=%.1f, range=%.1f, cooldown=%.1f, canAttack=%s", 
-                               self.type, dist, self.attackRange, self.attackCooldown,
-                               tostring(dist < self.attackRange and self.attackCooldown <= 0)))
-        end
+    end
+    
+    -- Smoothly interpolate angle towards target
+    local angleDiff = self.targetAngle - self.angle
+    -- Normalize to -pi to pi range
+    while angleDiff > math.pi do angleDiff = angleDiff - 2 * math.pi end
+    while angleDiff < -math.pi do angleDiff = angleDiff + 2 * math.pi end
+    
+    -- Interpolate angle with rotation speed limit
+    local maxRotation = self.rotationSpeed * dt
+    if math.abs(angleDiff) < maxRotation then
+        self.angle = self.targetAngle
+    else
+        self.angle = self.angle + math.min(maxRotation, math.max(-maxRotation, angleDiff))
     end
     
     return false
@@ -173,7 +252,7 @@ function Enemy:draw(assets, debug)
         imgHeight = img:getHeight() * self.scale
     else
         -- Use walking animation
-        local frame = math.floor(self.walkingFrameTime / self.zombieFrameDuration) % #assets.zombieWalkingImages + 1
+        local frame = math.floor(self.walkingFrameTime / self.zombieFrameDuration*(self.speed/50)) % #assets.zombieWalkingImages + 1
         img = assets.zombieWalkingImages[frame]
         imgWidth = img:getWidth() * self.scale
         imgHeight = img:getHeight() * self.scale

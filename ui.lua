@@ -193,7 +193,7 @@ function UI:isVictory()
 end
 
 -- Inventory display methods
-function UI:drawInventory(player)
+ function UI:drawInventory(player)
     local slots = player:getWeaponSlots()
     local currentSlot = player:getCurrentWeaponSlot()
     

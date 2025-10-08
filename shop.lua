@@ -133,7 +133,7 @@ Shop.UPGRADE_COSTS = {
 function Shop:new()
     local shop = {
         isOpen = false,
-        availableWeapons = {"SEMI_AUTO_PISTOL"},  -- Start with pistol available
+        availableWeapons = {"SEMI_AUTO_PISTOL", "SMG", "BOLT_ACTION", "SHOTGUN", "HMG"},  -- Start with pistol available
         selectedCategory = "WEAPONS",
         selectedItem = 1
     }

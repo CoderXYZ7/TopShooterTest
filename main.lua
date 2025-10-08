@@ -12,6 +12,8 @@ local GameManager = require('game_manager')
 local Weapons = require('weapons')
 local Shop = require('shop')
 local Map = require('map')
+local Pathfinding = require('pathfinding')
+local Shaders = require('shaders')
 
 -- Game state
 local game = {
@@ -24,6 +26,7 @@ local game = {
     particles = nil,
     gameManager = nil,
     map = nil,
+    pathfinding = nil,
     DEBUG = true,
     mapStates = {},  -- Store saved map states
     currentMapPath = nil
@@ -44,6 +47,8 @@ function love.load()
     game.particles = Particles:new()
     game.gameManager = GameManager:new()
     game.map = Map:new()
+    game.shaders = Shaders:new()
+    game.shaders:initializeDefaultShaders(game.DEBUG)
 
     -- Load map (fallback to default if loading fails)
     local mapLoaded = false
@@ -65,6 +70,10 @@ function love.load()
     -- Initialize collision with map geometry
     if mapLoaded then
         game.collision:createMapGeometry(game.map)
+        
+        -- Initialize pathfinding with map and entity collision radius
+        game.pathfinding = Pathfinding:new(32)  -- 32 pixel grid size
+        game.pathfinding:initialize(game.map, 32)  -- 32 pixel entity collision radius
     end
 
     -- Initialize game manager with map spawners
@@ -97,6 +106,9 @@ function love.load()
 end
 
 function love.update(dt)
+    -- Update shaders
+    game.shaders:update(dt)
+    
     -- Check if we need to restart the game
     if game.gameManager:update(dt, game.player, game.enemies, game.particles, game.ui) then
         restartGame()
@@ -110,7 +122,7 @@ function love.update(dt)
         -- Update enemies and handle attacks
         for i = #game.enemies, 1, -1 do
             local enemy = game.enemies[i]
-            local canAttack = enemy:update(dt, game.player)
+            local canAttack = enemy:update(dt, game.player, game.pathfinding)
             
             -- Handle enemy attacks
             if canAttack then
@@ -153,6 +165,14 @@ function love.update(dt)
             -- Create muzzle flash at correct weapon position
             local mx, my = game.player:getMuzzlePosition()
             game.particles:createMuzzleFlash(mx, my, game.player.angle)
+            
+            -- Trigger screen shake effect based on weapon type
+            local weapon = game.player:getCurrentWeapon()
+            local weaponConfig = Weapons.TYPES[weapon.type]
+            local shakeIntensity = weaponConfig.screenShakeIntensity or 0.1  -- Use weapon-specific intensity
+            
+            -- Activate screen shake for 0.2 seconds with weapon-specific intensity
+            game.shaders:activateShader("screen_shake", 0.2, shakeIntensity)
 
             -- Perform shooting with weapon damage, range falloff, and collateral damage
             local weapon = game.player:getCurrentWeapon()
@@ -246,6 +266,9 @@ end
 function love.draw()
     local ww, wh = love.graphics.getDimensions()
     
+    -- Start capturing the game to canvas for shader effects
+    game.shaders:beginCapture()
+    
     -- Only draw game world if not in shop
     if not game.gameManager:isShopOpen() then
         love.graphics.push()
@@ -293,6 +316,11 @@ function love.draw()
         -- Draw enemies
         for _, enemy in ipairs(game.enemies) do
             enemy:draw(game.assets, game.DEBUG)
+            
+            -- Draw enemy path in debug mode
+            if game.DEBUG and enemy.path and game.pathfinding then
+                game.pathfinding:debugDrawPath(enemy.path)
+            end
         end
 
         -- Draw player
@@ -367,6 +395,9 @@ function love.draw()
     
     -- Draw wave info
     game.gameManager:drawWaveInfo()
+    
+    -- End capture and apply shaders
+    game.shaders:endCapture()
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
@@ -431,6 +462,26 @@ function love.keypressed(key)
     -- Restart game
     if key == 'r' and (game.ui:isGameOver() or game.ui:isVictory()) then
         restartGame()
+    end
+    
+    -- Shader controls (only when playing and not in shop/loadout)
+    if game.gameManager:getState() == "PLAYING" and not game.gameManager:isShopOpen() and not game.ui:isLoadoutMode() then
+        -- Debug-only test shaders
+        if game.DEBUG then
+            -- 'k' key: Toggle red tint shader continuously
+            if key == 'k' then
+                if game.shaders:isShaderActive("red_tint") then
+                    game.shaders:deactivateShader("red_tint")
+                else
+                    game.shaders:activateShader("red_tint", 0) -- 0 = continuous
+                end
+            end
+            
+            -- 't' key: Activate blue wave shader for 2 seconds
+            if key == 't' then
+                game.shaders:activateShader("blue_wave", 2.0)
+            end
+        end
     end
     
     -- Shop interaction
@@ -581,6 +632,10 @@ function loadMap(mapPath, remember, spawnX, spawnY)
     -- Reinitialize collision with new map
     game.collision = Collision:new()
     game.collision:createMapGeometry(game.map)
+    
+    -- Reinitialize pathfinding with new map and entity collision radius
+    game.pathfinding = Pathfinding:new(32)
+    game.pathfinding:initialize(game.map, 32)  -- 32 pixel entity collision radius
     
     -- Reinitialize game manager with new map
     game.gameManager.map = game.map

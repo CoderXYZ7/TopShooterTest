@@ -25,7 +25,8 @@ Weapons.TYPES = {
         canMoveWhileShooting = false,
         canAimWhileShooting = false,
         collateral = 3,  -- Can hit up to 3 enemies in line
-        collateralFalloff = 0.5  -- 50% damage reduction per enemy
+        collateralFalloff = 0.5,  -- 50% damage reduction per enemy
+        screenShakeIntensity = 0.5  -- Medium shake for rifles
     },
     SEMI_AUTO_PISTOL = {
         name = "Semi-Auto Pistol",
@@ -42,7 +43,8 @@ Weapons.TYPES = {
         canMoveWhileShooting = true,
         canAimWhileShooting = true,
         collateral = 1,  -- Can only hit 1 enemy
-        collateralFalloff = 1.0  -- No falloff (only hits one enemy)
+        collateralFalloff = 1.0,  -- No falloff (only hits one enemy)
+        screenShakeIntensity = 0.08  -- Light shake for pistols
     },
     SMG = {
         name = "Submachine Gun",
@@ -59,7 +61,8 @@ Weapons.TYPES = {
         canMoveWhileShooting = false,
         canAimWhileShooting = true,
         collateral = 2,  -- Can hit up to 2 enemies in line
-        collateralFalloff = 0.7  -- 30% damage reduction per enemy
+        collateralFalloff = 0.7,  -- 30% damage reduction per enemy
+        screenShakeIntensity = 0.12
     },
     HMG = {
         name = "Heavy Machine Gun",
@@ -76,7 +79,8 @@ Weapons.TYPES = {
         canMoveWhileShooting = false,
         canAimWhileShooting = true,
         collateral = 4,  -- Can hit up to 4 enemies in line
-        collateralFalloff = 0.4  -- 60% damage reduction per enemy
+        collateralFalloff = 0.4,  -- 60% damage reduction per enemy
+        screenShakeIntensity = 0.2
     },
     SHOTGUN = {
         name = "Shotgun",
@@ -94,6 +98,7 @@ Weapons.TYPES = {
         canAimWhileShooting = true,
         collateral = 8,   -- Up to 8 enemies can be hit (one per pellet)
         collateralFalloff = 1.0,  -- Full damage per pellet
+        screenShakeIntensity = 0.4,
         specificVars = {   -- Weapon-specific variables
             pelletSpread = math.pi/16,  -- Total spread angle in radians (30-degree cone, 60-degree total)
             pellets = 8,  -- Number of pellets per shot

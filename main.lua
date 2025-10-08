@@ -127,13 +127,23 @@ function love.update(dt)
                 -- Create blood effect
                 local ex, ey = enemy:getCenter()
                 game.particles:createBloodSplat(ex, ey)
-                
+
                 -- Add score
                 game.ui:addScore(enemy:getScore())
-                
+
+                -- Handle enemy drops
+                local drops = enemy:getDrops()
+                print("Enemy died, checking drops. Total drops: " .. #drops)
+                for _, drop in ipairs(drops) do
+                    -- Get enemy position for drop
+                    local dropX, dropY = enemy:getCenter()
+                    print("Creating drop at " .. dropX .. ", " .. dropY .. " - Type: " .. drop.type)
+                    game.gameManager:createDrop(dropX, dropY, drop.type, drop.amount)
+                end
+
                 -- Track enemy kill for wave progression
                 game.gameManager:enemyKilled()
-                
+
                 table.remove(game.enemies, i)
             end
         end
@@ -508,21 +518,53 @@ end
 function saveMapState(mapPath)
     -- Save current map state
     game.mapStates[mapPath] = {
-        enemies = game.enemies,
+        enemies = {},
         playerX = game.player.x,
         playerY = game.player.y,
-        objectStates = {}
+        objectStates = {},
+        dropState = nil,
+        spawnerStates = {}
     }
+    
+    -- Save enemies (create deep copy to avoid reference issues)
+    for _, enemy in ipairs(game.enemies) do
+        table.insert(game.mapStates[mapPath].enemies, {
+            x = enemy.x,
+            y = enemy.y,
+            type = enemy.type,
+            health = enemy.health,
+            maxHealth = enemy.maxHealth
+        })
+    end
     
     -- Save object states (doors open/closed, etc.)
     if game.map and game.map.objects then
         for id, obj in pairs(game.map.objects) do
             game.mapStates[mapPath].objectStates[id] = {
                 open = obj.state.open,
-                active = obj.state.active
+                active = obj.state.active,
+                triggered = obj.state.triggered
             }
         end
     end
+    
+    -- Save drop system state (pickups and temporary spawners)
+    if game.gameManager and game.gameManager.drops then
+        game.mapStates[mapPath].dropState = game.gameManager.drops:saveState()
+    end
+    
+    -- Save permanent spawner states (whether they've been spawned)
+    if game.map and game.map.data and game.map.data.spawners then
+        for spawnerId, spawner in pairs(game.map.data.spawners) do
+            if not spawner.temporary then
+                game.mapStates[mapPath].spawnerStates[spawnerId] = {
+                    spawned = spawner.spawned or false
+                }
+            end
+        end
+    end
+    
+    print("Saved map state for: " .. mapPath)
 end
 
 function loadMap(mapPath, remember, spawnX, spawnY)
@@ -544,11 +586,25 @@ function loadMap(mapPath, remember, spawnX, spawnY)
     game.gameManager.map = game.map
     game.gameManager:initializeSpawners(game.map)
     
+    -- Set map reference in drops system
+    game.gameManager.drops:setMap(game.map)
+    
     -- Restore or reset map state
     if remember and game.mapStates[mapPath] then
         -- Restore saved state
         local state = game.mapStates[mapPath]
-        game.enemies = state.enemies
+        print("Restoring map state for: " .. mapPath)
+        
+        -- Restore enemies (recreate Enemy objects from saved data)
+        game.enemies = {}
+        for _, enemyData in ipairs(state.enemies) do
+            local enemy = Enemy:new(enemyData.x, enemyData.y, enemyData.type)
+            enemy.health = enemyData.health
+            enemy.maxHealth = enemyData.maxHealth
+            table.insert(game.enemies, enemy)
+        end
+        
+        -- Restore player position
         game.player.x = state.playerX
         game.player.y = state.playerY
         
@@ -557,6 +613,7 @@ function loadMap(mapPath, remember, spawnX, spawnY)
             if game.map.objects[id] then
                 game.map.objects[id].state.open = objState.open
                 game.map.objects[id].state.active = objState.active
+                game.map.objects[id].state.triggered = objState.triggered
                 
                 -- Update collision if it's a door
                 if game.map.objects[id].collision_id then
@@ -564,9 +621,29 @@ function loadMap(mapPath, remember, spawnX, spawnY)
                 end
             end
         end
+        
+        -- Restore drop system state (pickups and temporary spawners)
+        if state.dropState then
+            game.gameManager.drops:restoreState(state.dropState)
+        end
+        
+        -- Restore permanent spawner states
+        if state.spawnerStates and game.map.data and game.map.data.spawners then
+            for spawnerId, spawnerState in pairs(state.spawnerStates) do
+                if game.map.data.spawners[spawnerId] then
+                    game.map.data.spawners[spawnerId].spawned = spawnerState.spawned
+                end
+            end
+        end
     else
         -- Reset state - spawn new enemies and move player to spawn
+        print("Loading fresh map state for: " .. mapPath)
         game.enemies = {}
+        
+        -- Clear any existing drops
+        game.gameManager.drops:clear()
+        
+        -- Spawn map entities
         game.gameManager:spawnMapEntities(game.enemies)
         
         -- Position player

@@ -25,7 +25,7 @@ return {
 
         if portal then
             -- Load the target map with remember flag
-            api.loadMap(portal.target_map, portal.remember or false, portal.spawn_x, portal.spawn_y)
+            api.loadMap(portal.target_map, portal.remember or true, portal.spawn_x, portal.spawn_y)
         end
     end
 }

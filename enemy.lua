@@ -17,6 +17,10 @@ Enemy.TYPES = {
             height = 40,  -- Tall vertical hitbox
             offsetX = 0,  -- Centered horizontally
             offsetY = -4  -- Slightly higher (head level)
+        },
+        drops = {
+            {type = "AMMO", chance = 1, amount = 5},
+            {type = "MEDKIT", chance = 0.5, amount = 1}
         }
     },
     FAST_ZOMBIE = {
@@ -33,6 +37,10 @@ Enemy.TYPES = {
             height = 35,  -- Short hitbox
             offsetX = 0,
             offsetY = -2
+        },
+        drops = {
+            {type = "AMMO", chance = 1, amount = 3},
+            {type = "MEDKIT", chance = 0.05, amount = 1}
         }
     },
     TANK_ZOMBIE = {
@@ -49,6 +57,11 @@ Enemy.TYPES = {
             height = 50,  -- Very tall hitbox
             offsetX = 0,
             offsetY = -2
+        },
+        drops = {
+            {type = "AMMO", chance = 0.6, amount = 10},
+            {type = "MEDKIT", chance = 0.3, amount = 1},
+            {type = "WEAPON_UPGRADE", chance = 0.1, amount = 1}
         }
     }
 }
@@ -206,6 +219,29 @@ end
 function Enemy:takeDamage(amount)
     self.health = self.health - amount
     return self.health <= 0
+end
+
+function Enemy:getDrops()
+    local config = Enemy.TYPES[self.type]
+    local drops = {}
+
+    if config.drops then
+        for _, drop in ipairs(config.drops) do
+            if math.random() < drop.chance then
+                table.insert(drops, {
+                    type = drop.type,
+                    amount = drop.amount
+                })
+                print("Enemy " .. self.type .. " dropped: " .. drop.type)
+            end
+        end
+    end
+
+    if #drops > 0 then
+        print("Enemy " .. self.type .. " total drops: " .. #drops)
+    end
+
+    return drops
 end
 
 function Enemy:getCenter()

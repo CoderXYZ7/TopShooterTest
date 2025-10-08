@@ -1,6 +1,7 @@
 -- Game Manager for handling game states, waves, and progression
 local GameManager = {}
 local Shop = require('shop')
+local Drops = require('drops')
 
 function GameManager:new()
     local manager = {
@@ -15,15 +16,13 @@ function GameManager:new()
         spawnInterval = 2.0,  -- Seconds between enemy spawns
         maxEnemies = 15,
         difficultyMultiplier = 1.0,
-        pickupSpawnTimer = 0,
-        pickupSpawnInterval = 10.0,  -- Seconds between pickup spawns
-        pickups = {},
         waveCleared = false,
         createEnemy = nil,  -- Will be set by main.lua
         shop = Shop:new(),
         shopOpen = false,
         shopTimer = 0,
-        shopDuration = 30  -- 30 seconds to shop between waves
+        shopDuration = 30,  -- 30 seconds to shop between waves
+        drops = Drops:new()  -- Drops and pickups management
     }
     setmetatable(manager, { __index = self })
     return manager
@@ -31,17 +30,17 @@ end
 
 function GameManager:update(dt, player, enemies, particles, ui)
     if self.currentState == "PLAYING" then
-        -- Update pickup spawning
-        self:updatePickupSpawning(dt)
-        
+        -- Update drops system (only temporary spawners and pickups)
+        self.drops:updateTemporarySpawners(dt, player, particles)
+
         -- Check for player death
         if not player:isAlive() then
             self.currentState = "GAME_OVER"
             ui:gameOverScreen()
         end
-        
-        -- Update pickups
-        self:updatePickups(dt, player, particles)
+
+        -- Update pickups through drops module
+        self.drops:updatePickups(dt, player, particles)
         
     elseif self.currentState == "SHOP" then
         -- Handle shop state
@@ -189,75 +188,12 @@ function GameManager:enemyKilled()
     self.enemiesKilledThisWave = self.enemiesKilledThisWave + 1
 end
 
-function GameManager:updatePickupSpawning(dt)
-    self.pickupSpawnTimer = self.pickupSpawnTimer + dt
-    if self.pickupSpawnTimer >= self.pickupSpawnInterval then
-        self:spawnPickup()
-        self.pickupSpawnTimer = 0
-    end
-end
-
-function GameManager:spawnPickup()
-    local pickupTypes = {"health", "ammo"}
-    local type = pickupTypes[math.random(1, #pickupTypes)]
-    
-    local pickup = {
-        x = math.random(100, love.graphics.getWidth() - 100),
-        y = math.random(100, love.graphics.getHeight() - 100),
-        type = type,
-        lifetime = 15.0,  -- Pickups disappear after 15 seconds
-        age = 0,
-        size = 20
-    }
-    
-    if type == "health" then
-        pickup.color = {1, 0.2, 0.2}
-    else
-        pickup.color = {0.2, 0.2, 1}
-    end
-    
-    table.insert(self.pickups, pickup)
-end
-
-function GameManager:updatePickups(dt, player, particles)
-    for i = #self.pickups, 1, -1 do
-        local pickup = self.pickups[i]
-        pickup.age = pickup.age + dt
-        
-        -- Check collision with player
-        local dx = pickup.x - (player.x + player.width/2)
-        local dy = pickup.y - (player.y + player.height/2)
-        local dist = math.sqrt(dx*dx + dy*dy)
-        
-        if dist < pickup.size + player.width/2 then
-            -- Player collected pickup
-            if pickup.type == "health" then
-                player:heal(25)
-                particles:createPickupEffect(pickup.x, pickup.y, {1, 0.2, 0.2})
-            else
-                player:addAmmo(15)
-                particles:createPickupEffect(pickup.x, pickup.y, {0.2, 0.2, 1})
-            end
-            table.remove(self.pickups, i)
-        elseif pickup.age >= pickup.lifetime then
-            -- Pickup expired
-            table.remove(self.pickups, i)
-        end
-    end
+function GameManager:createDrop(x, y, dropType, amount)
+    self.drops:createDrop(x, y, dropType, amount)
 end
 
 function GameManager:drawPickups()
-    for _, pickup in ipairs(self.pickups) do
-        local alpha = 1 - (pickup.age / pickup.lifetime) * 0.5
-        love.graphics.setColor(pickup.color[1], pickup.color[2], pickup.color[3], alpha)
-        love.graphics.circle('fill', pickup.x, pickup.y, pickup.size)
-        
-        -- Pulsing effect
-        local pulse = math.sin(love.timer.getTime() * 5) * 2 + pickup.size
-        love.graphics.setColor(1, 1, 1, alpha * 0.3)
-        love.graphics.circle('line', pickup.x, pickup.y, pulse)
-    end
-    love.graphics.setColor(1, 1, 1, 1)
+    self.drops:drawPickups()
 end
 
 function GameManager:drawWaveInfo()
@@ -280,11 +216,10 @@ function GameManager:reset()
     self.spawnTimer = 0
     self.difficultyMultiplier = 1.0
     self.spawnInterval = 2.0
-    self.pickupSpawnTimer = 0
-    self.pickups = {}
     self.waveCleared = false
     self.shop = Shop:new()
     self.shopTimer = 0
+    self.drops:clear()  -- Clear drops and pickups
 end
 
 function GameManager:getState()
@@ -309,7 +244,10 @@ function GameManager:getShopTimeLeft()
 end
 
 function GameManager:initializeSpawners(map)
-    if not map then return end
+    if not map then 
+        print("GameManager: No map provided to initializeSpawners")
+        return 
+    end
 
     -- Set player spawn position
     local playerSpawns = map:getSpawners("player")
@@ -318,6 +256,14 @@ function GameManager:initializeSpawners(map)
             x = playerSpawns[1].position[1],
             y = playerSpawns[1].position[2]
         }
+    end
+
+    -- Set map reference in drops module
+    self.drops:setMap(map)
+    print("GameManager: Map reference set in drops system")
+    print("GameManager: Map has data: " .. tostring(map.data ~= nil))
+    if map.data then
+        print("GameManager: Map has spawners: " .. tostring(map.data.spawners ~= nil))
     end
 end
 
@@ -332,6 +278,16 @@ function GameManager:spawnMapEntities(enemies)
             local enemy = self.createEnemy(spawner.position[1], spawner.position[2], enemyType)
             if enemy then
                 table.insert(enemies, enemy)
+                spawner.spawned = true -- Mark as spawned
+            end
+        end
+    end
+
+    -- Spawn items from map item spawners
+    if self.map.data and self.map.data.spawners then
+        for spawnerId, spawner in pairs(self.map.data.spawners) do
+            if spawner.type == "item" and not spawner.temporary and not spawner.spawned then
+                self.drops:spawnItemFromSpawner(spawner, spawnerId)
                 spawner.spawned = true -- Mark as spawned
             end
         end

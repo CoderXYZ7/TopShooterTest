@@ -1,0 +1,94 @@
+{
+  "general": {
+    "background": {
+      "texture": "assets/textures/floortile192x192.png",
+      "layer": 0,
+      "size": [1600, 1200]
+    }
+  },
+  "groups": {
+    "arena": {
+      "origin": [0, 0],
+      "collision": [
+        [[0, 0], [1600, 0], [1600, 50], [0, 50]],
+        [[0, 1150], [1600, 1150], [1600, 1200], [0, 1200]],
+        [[0, 0], [50, 0], [50, 1200], [0, 1200]],
+        [[1550, 0], [1600, 0], [1600, 1200], [1550, 1200]],
+        [[400, 400], [500, 400], [500, 500], [400, 500]],
+        [[1100, 400], [1200, 400], [1200, 500], [1100, 500]],
+        [[400, 700], [500, 700], [500, 800], [400, 800]],
+        [[1100, 700], [1200, 700], [1200, 800], [1100, 800]],
+        [[750, 550], [850, 550], [850, 650], [750, 650]],
+        [[790, 270], [810, 270], [810, 330], [790, 330]],
+        [[790, 870], [810, 870], [810, 930], [790, 930]]
+      ],
+      "textures": [],
+      "objects": [
+        {
+          "id": "center_chest",
+          "type": "chest",
+          "position": [800, 600],
+          "trigger": {"on_interact": "chest_interact"}
+        },
+        {
+          "id": "north_door",
+          "type": "door",
+          "position": [800, 300],
+          "collision_id": "door_north",
+          "trigger": {"on_interact": "door_interact"}
+        },
+        {
+          "id": "south_door",
+          "type": "door",
+          "position": [800, 900],
+          "collision_id": "door_south",
+          "trigger": {"on_interact": "door_interact"}
+        },
+        {
+          "id": "portal_to_test",
+          "type": "portal",
+          "position": [200, 600],
+          "target_map": "maps/test_map/test_map",
+          "remember": false,
+          "trigger": {"on_interact": "portal_interact"}
+        }
+      ],
+      "collision_ids": {
+        "door_north": 9,
+        "door_south": 10
+      }
+    }
+  },
+  "spawners": {
+    "player_spawn": {
+      "type": "player",
+      "index": 1,
+      "position": [900, 600]
+    },
+    "enemy_nw": {
+      "type": "single",
+      "position": [200, 200],
+      "entity": "ZOMBIE"
+    },
+    "enemy_ne": {
+      "type": "single",
+      "position": [1400, 200],
+      "entity": "FAST_ZOMBIE"
+    },
+    "enemy_sw": {
+      "type": "single",
+      "position": [200, 1000],
+      "entity": "ZOMBIE"
+    },
+    "enemy_se": {
+      "type": "single",
+      "position": [1400, 1000],
+      "entity": "TANK_ZOMBIE"
+    },
+    "enemy_center": {
+      "type": "single",
+      "position": [800, 300],
+      "entity": "FAST_ZOMBIE"
+    }
+  }
+}

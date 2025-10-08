@@ -7,7 +7,7 @@ function Shooting:new()
     return shooting
 end
 
-function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff)
+function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff, collision)
     -- Default values if not provided
     accuracy = accuracy or 0.95
     range = range or 500
@@ -22,7 +22,7 @@ function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collatera
 
     -- Special handling for shotgun (12 gauge) - fire multiple pellets
     if weaponConfig.ammoType == require('weapons').AMMO_TYPES.AMMO_12GAUGE then
-        return self:shootShotgunPellets(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff, weaponConfig)
+        return self:shootShotgunPellets(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff, weaponConfig, collision)
     end
 
     -- Default single-ray shooting logic
@@ -36,6 +36,15 @@ function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collatera
     dx = math.cos(actualAngle)
     dy = math.sin(actualAngle)
 
+    -- Check for wall collision first
+    local wallHitDist = maxRange
+    if collision then
+        local hitDist, hitX, hitY = collision:raycastAgainstWalls(px, py, dx, dy, maxRange)
+        if hitDist then
+            wallHitDist = hitDist
+        end
+    end
+
     local hitEnemies = {}
 
     for i, enemy in ipairs(enemies) do
@@ -48,7 +57,8 @@ function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collatera
             local ex, ey = enemy:getCenter()
             local dist = math.sqrt((ex - px)^2 + (ey - py)^2)
 
-            if dist <= maxRange then
+            -- Only add enemy if it's not behind a wall and within range
+            if dist <= maxRange and dist < wallHitDist then
                 -- Calculate dot product for sorting (closer enemies first)
                 local dot = (ex - px) * dx + (ey - py) * dy
 
@@ -65,7 +75,10 @@ function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collatera
     table.sort(hitEnemies, function(a, b) return a.distance < b.distance end)
 
     -- Return up to collateral number of enemies with damage multipliers
+    -- Also include wall hit distance for tracer rendering
     local result = {}
+    result.wallHitDist = wallHitDist
+    
     for i = 1, math.min(collateral, #hitEnemies) do
         local hit = hitEnemies[i]
         local damageMultiplier = math.pow(collateralFalloff, i - 1)  -- First enemy gets full damage
@@ -80,7 +93,7 @@ function Shooting:shootRay(player, enemies, accuracy, range, maxRange, collatera
 end
 
 -- Special shotgun pellet shooting function
-function Shooting:shootShotgunPellets(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff, weaponConfig)
+function Shooting:shootShotgunPellets(player, enemies, accuracy, range, maxRange, collateral, collateralFalloff, weaponConfig, collision)
     local px, py = player:getMuzzlePosition()
     local baseAngle = player.angle
 
@@ -101,10 +114,19 @@ function Shooting:shootShotgunPellets(player, enemies, accuracy, range, maxRange
         local dx = math.cos(pelletAngle)
         local dy = math.sin(pelletAngle)
 
+        -- Check for wall collision for this pellet
+        local pelletWallHitDist = maxRange
+        if collision then
+            local hitDist, hitX, hitY = collision:raycastAgainstWalls(px, py, dx, dy, maxRange)
+            if hitDist then
+                pelletWallHitDist = hitDist
+            end
+        end
+
         -- Track this pellet's trajectory info
         local pelletInfo = {
             angle = pelletAngle,
-            hitDistance = nil  -- Will be set if it hits something
+            hitDistance = pelletWallHitDist  -- Default to wall hit distance
         }
 
         -- Check hits for this pellet using bounding boxes
@@ -118,7 +140,8 @@ function Shooting:shootShotgunPellets(player, enemies, accuracy, range, maxRange
                 local ex, ey = enemy:getCenter()
                 local dist = math.sqrt((ex - px)^2 + (ey - py)^2)
 
-                if dist <= maxRange then
+                -- Only count hit if enemy is not behind a wall and within range
+                if dist <= maxRange and dist < pelletWallHitDist then
                     -- Calculate dot product for sorting order
                     local dot = (ex - px) * dx + (ey - py) * dy
 
@@ -129,7 +152,7 @@ function Shooting:shootShotgunPellets(player, enemies, accuracy, range, maxRange
                         pelletAngle = pelletAngle  -- Track which pellet hit
                     })
 
-                    -- Store hit distance for this pellet's tracer
+                    -- Store hit distance for this pellet's tracer (enemy hit)
                     if not pelletInfo.hitDistance or dist < pelletInfo.hitDistance then
                         pelletInfo.hitDistance = dist
                     end

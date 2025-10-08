@@ -11,6 +11,7 @@ local Particles = require('particles')
 local GameManager = require('game_manager')
 local Weapons = require('weapons')
 local Shop = require('shop')
+local Map = require('map')
 
 -- Game state
 local game = {
@@ -22,32 +23,76 @@ local game = {
     ui = nil,
     particles = nil,
     gameManager = nil,
-    DEBUG = true
+    map = nil,
+    DEBUG = true,
+    mapStates = {},  -- Store saved map states
+    currentMapPath = nil
 }
 
 function love.load()
+    -- Store game state globally for map scripts
+    love.gameState = game
+    
     -- Initialize modules
     game.assets = Assets:new()
     game.assets:load()
-    
+
     game.player = Player:new()
     game.collision = Collision:new()
     game.shooting = Shooting:new()
     game.ui = UI:new()
     game.particles = Particles:new()
     game.gameManager = GameManager:new()
-    
+    game.map = Map:new()
+
+    -- Load map (fallback to default if loading fails)
+    local mapLoaded = false
+    if love.filesystem.getInfo("maps/arena_map/arena_map.json") then
+        -- Load arena map
+        game.map:load("maps/arena_map/arena_map")
+        game.currentMapPath = "maps/arena_map/arena_map"
+        mapLoaded = true
+    elseif love.filesystem.getInfo("maps/test_map/test_map.json") then
+        -- Fallback to test map
+        game.map:load("maps/test_map/test_map")
+        game.currentMapPath = "maps/test_map/test_map"
+        mapLoaded = true
+    else
+        -- Create fallback infinite map with default floor tiles
+        print("Map not found, using fallback rendering")
+    end
+
+    -- Initialize collision with map geometry
+    if mapLoaded then
+        game.collision:createMapGeometry(game.map)
+    end
+
+    -- Initialize game manager with map spawners
+    game.gameManager.map = game.map  -- Store map reference
+    game.gameManager:initializeSpawners(game.map)
+
+    -- Move player to spawn point if defined
+    if game.gameManager.playerSpawnPoint then
+        game.player.x = game.gameManager.playerSpawnPoint.x
+        game.player.y = game.gameManager.playerSpawnPoint.y
+    end
+
     -- Provide enemy creation callback to game manager
     game.gameManager.createEnemy = function(x, y, enemyType)
         return Enemy:new(x, y, enemyType)
     end
-    
+
     -- Set random seed for consistent randomness
     math.randomseed(os.time())
-    
-    -- Create initial enemies
-    for i = 1, 3 do
-        table.insert(game.enemies, Enemy:new())
+
+    -- Spawn map-based entities (separated from wave system)
+    game.gameManager:spawnMapEntities(game.enemies)
+
+    -- Create initial wave enemies if needed
+    if #game.enemies < 3 then
+        for i = 1, 3 - #game.enemies do
+            table.insert(game.enemies, Enemy:new())
+        end
     end
 end
 
@@ -102,7 +147,7 @@ function love.update(dt)
             -- Perform shooting with weapon damage, range falloff, and collateral damage
             local weapon = game.player:getCurrentWeapon()
             local weaponConfig = Weapons.TYPES[weapon.type]
-            local hitEnemies = game.shooting:shootRay(game.player, game.enemies, weapon.accuracy, weapon.range, weapon.maxRange, weaponConfig.collateral, weaponConfig.collateralFalloff)
+            local hitEnemies = game.shooting:shootRay(game.player, game.enemies, weapon.accuracy, weapon.range, weapon.maxRange, weaponConfig.collateral, weaponConfig.collateralFalloff, game.collision)
 
             -- Create bullet tracer(s) - single for normal weapons, multiple for shotguns
             local weapon = game.player:getCurrentWeapon()
@@ -110,13 +155,15 @@ function love.update(dt)
 
             if weaponConfig.ammoType == Weapons.AMMO_TYPES.AMMO_12GAUGE and hitEnemies.pelletHits then
                 -- Multi-pellet shotgun tracers - create one tracer per pellet
+                -- Each pellet's hitDistance already accounts for walls
                 for i, pelletHit in ipairs(hitEnemies.pelletHits) do
-                    local pelletTracerDistance = pelletHit.hitDistance or game.shooting:getMaxWorldBoundaryDistance(game.player)
+                    local pelletTracerDistance = pelletHit.hitDistance
                     game.particles:createBulletTracer(mx, my, pelletHit.angle, pelletTracerDistance)
                 end
             else
                 -- Single tracer for normal weapons (pistol, rifles, etc.)
-                local tracerDistance = game.shooting:getMaxWorldBoundaryDistance(game.player)
+                -- Use wall hit distance, or enemy hit distance if closer
+                local tracerDistance = hitEnemies.wallHitDist or game.shooting:getMaxWorldBoundaryDistance(game.player)
                 if #hitEnemies > 0 then
                     local lastDamagedEnemy = hitEnemies[#hitEnemies]
                     tracerDistance = math.min(tracerDistance, lastDamagedEnemy.hitDistance)
@@ -194,27 +241,38 @@ function love.draw()
         love.graphics.push()
         love.graphics.translate(ww/2 - game.player.x - game.player.width/2, wh/2 - game.player.y - game.player.height/2)
 
-        -- Draw floor tiles
-        if game.assets.floorTile then
-            local tw = game.assets.floorTile:getWidth()
-            local th = game.assets.floorTile:getHeight()
-            local tilesX = math.ceil(ww / tw) + 2
-            local tilesY = math.ceil(wh / th) + 2
-            
-            -- Calculate offset to center the player and make movement smoother
-            local offsetX = -game.player.x - game.player.width/2
-            local offsetY = -game.player.y - game.player.height/2
-            
-            -- Snap to tile grid for smoother movement
-            local snapX = math.floor(offsetX / tw) * tw
-            local snapY = math.floor(offsetY / th) * th
-            
-            for i = -1, tilesX do
-                for j = -1, tilesY do
-                    love.graphics.draw(game.assets.floorTile, snapX + i * tw, snapY + j * th)
+        -- Draw map (background layers 0-49)
+        game.map:draw(0, 49)
+
+        -- Fallback to default floor tiles if no map loaded
+        if not game.map.data then
+            if game.assets.floorTile then
+                local tw = game.assets.floorTile:getWidth()
+                local th = game.assets.floorTile:getHeight()
+                local tilesX = math.ceil(ww / tw) + 2
+                local tilesY = math.ceil(wh / th) + 2
+
+                -- Calculate offset to center the player and make movement smoother
+                local offsetX = -game.player.x - game.player.width/2
+                local offsetY = -game.player.y - game.player.height/2
+
+                -- Snap to tile grid for smoother movement
+                local snapX = math.floor(offsetX / tw) * tw
+                local snapY = math.floor(offsetY / th) * th
+
+                for i = -1, tilesX do
+                    for j = -1, tilesY do
+                        love.graphics.draw(game.assets.floorTile, snapX + i * tw, snapY + j * th)
+                    end
                 end
             end
         end
+
+        -- Draw map (foreground layers 50-100)
+        game.map:draw(50, 100)
+        
+        -- Draw interactive objects (chests, etc.)
+        game.map:drawObjects()
 
         -- Draw pickups
         game.gameManager:drawPickups()
@@ -239,10 +297,45 @@ function love.draw()
         -- Draw shooting ray
         game.shooting:drawRay(game.player, game.DEBUG)
 
-        -- Draw debug boundaries
+        -- Draw debug boundaries and map collision
         if game.DEBUG then
-            love.graphics.setColor(0, 1, 0, 0.3)  -- Green for boundaries
+            love.graphics.setColor(0, 1, 0, 0.3)  -- Green for screen boundaries
             love.graphics.rectangle('line', 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+
+            -- Draw map collision polygons (filled)
+            love.graphics.setColor(1, 0, 1, 0.3)  -- Magenta filled polygons
+            love.graphics.setBlendMode("multiply", "premultiplied")
+            for _, polygon in ipairs(game.map:getCollisionPolygons()) do
+                if #polygon >= 3 then
+                    local vertices = {}
+                    for _, point in ipairs(polygon) do
+                        table.insert(vertices, point[1])
+                        table.insert(vertices, point[2])
+                    end
+                    -- Draw filled polygon (assuming convex polygons)
+                    if #vertices >= 6 then  -- Need at least 3 points (6 coords)
+                        love.graphics.polygon("fill", vertices)
+                    end
+                end
+            end
+            love.graphics.setBlendMode("alpha", "alphamultiply")
+
+            -- Draw debug labels (in world space considering camera position)
+            -- Position labels relative to player's world position so they move with camera
+            local labelWorldX = game.player.x - ww/2 + 10  -- Screen x=10 relative to camera
+            local labelWorldY = game.player.y - wh/2 + 10  -- Screen y=10 relative to camera
+            love.graphics.setColor(0, 1, 0, 1)  -- Bright green for text
+            love.graphics.print("Screen Bounds", labelWorldX, labelWorldY)
+            love.graphics.setColor(1, 0, 1, 1)  -- Bright magenta for text
+            love.graphics.print("Map Collision Polygons", labelWorldX, labelWorldY + 15)
+            love.graphics.setColor(0, 1, 1, 1)  -- Bright cyan for text
+            love.graphics.print("Entities", labelWorldX, labelWorldY + 30)
+
+            love.graphics.setColor(1, 1, 1, 1)  -- Reset to white
+
+            -- Draw player collision bounds if any
+            love.graphics.setColor(0, 1, 1, 0.3)  -- Cyan for entities
+
             love.graphics.setColor(1, 1, 1, 1)
         end
 
@@ -264,6 +357,47 @@ function love.draw()
     
     -- Draw wave info
     game.gameManager:drawWaveInfo()
+end
+
+function love.mousepressed(x, y, button, istouch, presses)
+    if button == 2 and game.gameManager:getState() == "PLAYING" then  -- Right click
+        -- Check for interactable objects in front of player
+        local interactRange = 100
+        local px, py = game.player:getCenter()
+        local playerAngle = game.player.angle
+        
+        -- Calculate position in front of player
+        local checkX = px + math.cos(playerAngle) * interactRange
+        local checkY = py + math.sin(playerAngle) * interactRange
+        
+        -- Check map objects for interactions
+        if game.map and game.map.objects then
+            for id, obj in pairs(game.map.objects) do
+                local dx = obj.position.x - px
+                local dy = obj.position.y - py
+                local dist = math.sqrt(dx * dx + dy * dy)
+                
+                -- Check if object is within range and roughly in front of player
+                if dist <= interactRange then
+                    local angleToObj = math.atan2(dy, dx)
+                    local angleDiff = math.abs(angleToObj - playerAngle)
+                    -- Normalize angle difference
+                    if angleDiff > math.pi then
+                        angleDiff = 2 * math.pi - angleDiff
+                    end
+                    
+                    -- If object is within 90 degrees in front of player
+                    if angleDiff < math.pi / 2 then
+                        -- Execute interact trigger
+                        if obj.trigger and obj.trigger.on_interact then
+                            game.map:executeTrigger(obj.trigger.on_interact, obj, {x = px, y = py})
+                        end
+                        break  -- Only interact with closest object
+                    end
+                end
+            end
+        end
+    end
 end
 
 function love.keypressed(key)
@@ -371,16 +505,98 @@ function love.keypressed(key)
     end
 end
 
+function saveMapState(mapPath)
+    -- Save current map state
+    game.mapStates[mapPath] = {
+        enemies = game.enemies,
+        playerX = game.player.x,
+        playerY = game.player.y,
+        objectStates = {}
+    }
+    
+    -- Save object states (doors open/closed, etc.)
+    if game.map and game.map.objects then
+        for id, obj in pairs(game.map.objects) do
+            game.mapStates[mapPath].objectStates[id] = {
+                open = obj.state.open,
+                active = obj.state.active
+            }
+        end
+    end
+end
+
+function loadMap(mapPath, remember, spawnX, spawnY)
+    -- Save current map state if remember mode
+    if remember and game.currentMapPath then
+        saveMapState(game.currentMapPath)
+    end
+    
+    -- Load new map
+    game.map = Map:new()
+    game.map:load(mapPath)
+    game.currentMapPath = mapPath
+    
+    -- Reinitialize collision with new map
+    game.collision = Collision:new()
+    game.collision:createMapGeometry(game.map)
+    
+    -- Reinitialize game manager with new map
+    game.gameManager.map = game.map
+    game.gameManager:initializeSpawners(game.map)
+    
+    -- Restore or reset map state
+    if remember and game.mapStates[mapPath] then
+        -- Restore saved state
+        local state = game.mapStates[mapPath]
+        game.enemies = state.enemies
+        game.player.x = state.playerX
+        game.player.y = state.playerY
+        
+        -- Restore object states
+        for id, objState in pairs(state.objectStates) do
+            if game.map.objects[id] then
+                game.map.objects[id].state.open = objState.open
+                game.map.objects[id].state.active = objState.active
+                
+                -- Update collision if it's a door
+                if game.map.objects[id].collision_id then
+                    game.map:toggleCollision(game.map.objects[id].collision_id, not objState.open)
+                end
+            end
+        end
+    else
+        -- Reset state - spawn new enemies and move player to spawn
+        game.enemies = {}
+        game.gameManager:spawnMapEntities(game.enemies)
+        
+        -- Position player
+        if spawnX and spawnY then
+            game.player.x = spawnX
+            game.player.y = spawnY
+        elseif game.gameManager.playerSpawnPoint then
+            game.player.x = game.gameManager.playerSpawnPoint.x
+            game.player.y = game.gameManager.playerSpawnPoint.y
+        end
+    end
+end
+
 function restartGame()
     -- Reset all game state
     game.player = Player:new()
+
+    -- Re-position player to spawn point if available
+    if game.gameManager and game.gameManager.playerSpawnPoint then
+        game.player.x = game.gameManager.playerSpawnPoint.x
+        game.player.y = game.gameManager.playerSpawnPoint.y
+    end
+
     game.enemies = {}
     game.collision = Collision:new()
     game.shooting = Shooting:new()
     game.ui:reset()
     game.particles:clear()
     game.gameManager:reset()
-    
+
     -- Reinitialize some enemies to start
     for i = 1, 3 do
         table.insert(game.enemies, Enemy:new())

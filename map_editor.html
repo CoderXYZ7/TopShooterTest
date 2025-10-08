@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TopShooter Map Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 250px 1fr 300px 400px;
+            height: 100vh;
+        }
+
+        .json-viewer {
+            background: #1e1e1e;
+            padding: 15px;
+            overflow-y: auto;
+            border-left: 1px solid #555;
+        }
+
+        .json-viewer h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #4a9eff;
+        }
+
+        .json-viewer pre {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #a9b7c6;
+        }
+
+        .json-viewer .json-key {
+            color: #9876aa;
+        }
+
+        .json-viewer .json-string {
+            color: #6a8759;
+        }
+
+        .json-viewer .json-number {
+            color: #6897bb;
+        }
+
+        .sidebar, .properties {
+            background: #252525;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .sidebar h2, .properties h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #4a9eff;
+        }
+
+        .tool-group {
+            margin-bottom: 20px;
+        }
+
+        .tool-group h3 {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        button {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        button:hover {
+            background: #4a4a4a;
+        }
+
+        button.active {
+            background: #4a9eff;
+            border-color: #4a9eff;
+        }
+
+        .canvas-container {
+            position: relative;
+            background: #2a2a2a;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 3px;
+            color: #aaa;
+        }
+
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 6px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .grid-controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .grid-controls input {
+            flex: 1;
+        }
+
+        .status-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            padding: 5px 10px;
+            font-size: 11px;
+            border-top: 1px solid #555;
+        }
+
+        .spawner-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+
+        .spawner-player { background: #4a9eff; }
+        .spawner-enemy { background: #ff4a4a; }
+        .spawner-item { background: #4aff4a; }
+
+        .color-input {
+            width: 50px !important;
+            height: 30px;
+            padding: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Sidebar -->
+        <div class="sidebar">
+            <h2>Tools</h2>
+            
+            <div class="tool-group">
+                <h3>Mode</h3>
+                <button id="tool-collision" class="tool-btn active">Draw Collision</button>
+                <button id="tool-spawner" class="tool-btn">Place Spawner</button>
+                <button id="tool-texture" class="tool-btn">Place Texture</button>
+                <button id="tool-select" class="tool-btn">Select/Move</button>
+            </div>
+
+            <div class="tool-group">
+                <h3>Collision</h3>
+                <button id="clear-polygon">Clear Current Polygon</button>
+                <button id="finish-polygon">Finish Polygon</button>
+            </div>
+
+            <div class="tool-group">
+                <h3>Spawner Type</h3>
+                <button id="spawner-player" class="spawner-type-btn"><span class="spawner-icon spawner-player"></span>Player</button>
+                <button id="spawner-enemy" class="spawner-type-btn active"><span class="spawner-icon spawner-enemy"></span>Enemy</button>
+                <button id="spawner-item" class="spawner-type-btn"><span class="spawner-icon spawner-item"></span>Item</button>
+            </div>
+
+            <div class="tool-group">
+                <h3>View</h3>
+                <div class="grid-controls">
+                    <input type="number" id="grid-size" value="50" min="10" max="200" style="width: 60px;">
+                    <button id="toggle-grid">Grid: ON</button>
+                </div>
+                <button id="toggle-snap">Snap: OFF</button>
+                <button id="reset-view">Reset View</button>
+            </div>
+
+            <div class="tool-group">
+                <h3>File</h3>
+                <button id="import-json">Import JSON</button>
+                <button id="export-json">Export JSON</button>
+                <button id="new-map">New Map</button>
+            </div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+            <div class="status-bar" id="status-bar">
+                Ready | Position: (0, 0) | Tool: Collision
+            </div>
+        </div>
+
+        <!-- Right Properties Panel -->
+        <div class="properties">
+            <h2>Properties</h2>
+            
+            <div id="props-map" class="props-section">
+                <h3>Map Settings</h3>
+                <div class="input-group">
+                    <label>Width</label>
+                    <input type="number" id="map-width" value="2400">
+                </div>
+                <div class="input-group">
+                    <label>Height</label>
+                    <input type="number" id="map-height" value="1800">
+                </div>
+            </div>
+
+            <div id="props-spawner" class="props-section" style="display: none;">
+                <h3>Spawner Properties</h3>
+                <div class="input-group">
+                    <label>ID</label>
+                    <input type="text" id="spawner-id" placeholder="spawner_1">
+                </div>
+                <div class="input-group">
+                    <label>Entity Type</label>
+                    <select id="spawner-entity">
+                        <option value="ZOMBIE">Zombie</option>
+                        <option value="FAST_ZOMBIE">Fast Zombie</option>
+                        <option value="TANK_ZOMBIE">Tank Zombie</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Item Type</label>
+                    <select id="spawner-item">
+                        <option value="MEDKIT">Medkit</option>
+                        <option value="AMMO">Ammo</option>
+                        <option value="WEAPON_UPGRADE">Weapon Upgrade</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="props-texture" class="props-section" style="display: none;">
+                <h3>Texture Properties</h3>
+                <div class="input-group">
+                    <label>Name</label>
+                    <input type="text" id="texture-name" placeholder="house_1">
+                </div>
+                <div class="input-group">
+                    <label>Texture Path</label>
+                    <input type="text" id="texture-path" placeholder="assets/textures/house.png">
+                </div>
+                <div class="input-group">
+                    <label>Layer</label>
+                    <input type="number" id="texture-layer" value="10">
+                </div>
+                <div class="input-group">
+                    <label>Width</label>
+                    <input type="number" id="texture-width" value="100">
+                </div>
+                <div class="input-group">
+                    <label>Height</label>
+                    <input type="number" id="texture-height" value="100">
+                </div>
+            </div>
+
+            <div id="props-collision" class="props-section">
+                <h3>Collision Info</h3>
+                <div class="input-group">
+                    <label>Total Polygons</label>
+                    <input type="text" id="collision-count" value="0" readonly>
+                </div>
+                <div class="input-group">
+                    <label>Current Points</label>
+                    <input type="text" id="collision-points" value="0" readonly>
+                </div>
+            </div>
+
+            <div class="tool-group">
+                <h3>Selected Object</h3>
+                <button id="delete-selected">Delete Selected</button>
+            </div>
+
+            <div class="tool-group">
+                <h3>Groups</h3>
+                <div class="input-group">
+                    <label>Current Group</label>
+                    <select id="current-group">
+                        <option value="terrain">Terrain</option>
+                        <option value="buildings">Buildings</option>
+                        <option value="obstacles">Obstacles</option>
+                    </select>
+                </div>
+                <button id="add-group">Add New Group</button>
+            </div>
+        </div>
+
+        <!-- JSON Viewer Panel -->
+        <div class="json-viewer">
+            <h2>Live JSON Preview</h2>
+            <pre id="json-display"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Editor State
+        const editor = {
+            canvas: null,
+            ctx: null,
+            tool: 'collision',
+            spawnerType: 'enemy',
+            
+            // View
+            offsetX: 0,
+            offsetY: 0,
+            zoom: 1,
+            gridSize: 50,
+            showGrid: true,
+            snapToGrid: false,
+            
+            // Map data
+            mapWidth: 2400,
+            mapHeight: 1800,
+            collisionPolygons: [],
+            currentPolygon: [],
+            spawners: {},
+            textures: [],
+            objects: [],
+            
+            // Selection
+            selectedObject: null,
+            dragging: false,
+            dragStart: {x: 0, y: 0}
+        };
+
+        // Initialize
+        window.onload = () => {
+            editor.canvas = document.getElementById('canvas');
+            editor.ctx = editor.canvas.getContext('2d');
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            setupEventListeners();
+            render();
+        };
+
+        function resizeCanvas() {
+            const container = editor.canvas.parentElement;
+            editor.canvas.width = container.clientWidth;
+            editor.canvas.height = container.clientHeight - 30; // Account for status bar
+            render();
+        }
+
+        function setupEventListeners() {
+            // Tool buttons
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    editor.tool = e.target.id.replace('tool-', '');
+                    updatePropertiesPanel();
+                    updateStatus();
+                });
+            });
+
+            // Spawner type buttons
+            document.querySelectorAll('.spawner-type-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.spawner-type-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    editor.spawnerType = e.target.id.replace('spawner-', '');
+                });
+            });
+
+            // Canvas events
+            editor.canvas.addEventListener('mousedown', handleMouseDown);
+            editor.canvas.addEventListener('mousemove', handleMouseMove);
+            editor.canvas.addEventListener('mouseup', handleMouseUp);
+            editor.canvas.addEventListener('wheel', handleWheel);
+
+            // Buttons
+            document.getElementById('clear-polygon').addEventListener('click', () => {
+                editor.currentPolygon = [];
+                render();
+            });
+
+            document.getElementById('finish-polygon').addEventListener('click', finishPolygon);
+            document.getElementById('toggle-grid').addEventListener('click', toggleGrid);
+            document.getElementById('toggle-snap').addEventListener('click', toggleSnap);
+            document.getElementById('reset-view').addEventListener('click', resetView);
+            document.getElementById('export-json').addEventListener('click', exportJSON);
+            document.getElementById('import-json').addEventListener('click', importJSON);
+            document.getElementById('new-map').addEventListener('click', newMap);
+            document.getElementById('delete-selected').addEventListener('click', deleteSelected);
+
+            // Grid size
+            document.getElementById('grid-size').addEventListener('change', (e) => {
+                editor.gridSize = parseInt(e.target.value);
+                render();
+            });
+        }
+
+        function handleMouseDown(e) {
+            const pos = getCanvasPos(e);
+            const worldPos = screenToWorld(pos.x, pos.y);
+
+            if (editor.tool === 'collision') {
+                editor.currentPolygon.push([worldPos.x, worldPos.y]);
+                render();
+            } else if (editor.tool === 'spawner') {
+                placeSpawner(worldPos.x, worldPos.y);
+            } else if (editor.tool === 'texture') {
+                placeTexture(worldPos.x, worldPos.y);
+            } else if (editor.tool === 'select') {
+                selectObject(worldPos.x, worldPos.y);
+                if (editor.selectedObject) {
+                    editor.dragging = true;
+                    editor.dragStart = worldPos;
+                }
+            }
+        }
+
+        function handleMouseMove(e) {
+            const pos = getCanvasPos(e);
+            const worldPos = screenToWorld(pos.x, pos.y);
+            
+            updateStatus(`Position: (${Math.round(worldPos.x)}, ${Math.round(worldPos.y)})`);
+
+            if (editor.dragging && editor.selectedObject) {
+                const dx = worldPos.x - editor.dragStart.x;
+                const dy = worldPos.y - editor.dragStart.y;
+                
+                if (editor.selectedObject.type === 'spawner') {
+                    editor.selectedObject.data.position[0] += dx;
+                    editor.selectedObject.data.position[1] += dy;
+                } else if (editor.selectedObject.type === 'texture') {
+                    editor.selectedObject.data.position[0] += dx;
+                    editor.selectedObject.data.position[1] += dy;
+                } else if (editor.selectedObject.type === 'polygon') {
+                    // Move all points of the polygon
+                    for (let i = 0; i < editor.selectedObject.data.length; i++) {
+                        editor.selectedObject.data[i][0] += dx;
+                        editor.selectedObject.data[i][1] += dy;
+                    }
+                }
+                
+                editor.dragStart = worldPos;
+                render();
+            }
+        }
+
+        function handleMouseUp(e) {
+            editor.dragging = false;
+        }
+
+        function handleWheel(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            editor.zoom *= delta;
+            editor.zoom = Math.max(0.1, Math.min(5, editor.zoom));
+            render();
+        }
+
+        function getCanvasPos(e) {
+            const rect = editor.canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function screenToWorld(x, y) {
+            return {
+                x: (x - editor.offsetX) / editor.zoom,
+                y: (y - editor.offsetY) / editor.zoom
+            };
+        }
+
+        function worldToScreen(x, y) {
+            return {
+                x: x * editor.zoom + editor.offsetX,
+                y: y * editor.zoom + editor.offsetY
+            };
+        }
+
+        function snapToGrid(x, y) {
+            if (!editor.snapToGrid) return {x, y};
+            return {
+                x: Math.round(x / editor.gridSize) * editor.gridSize,
+                y: Math.round(y / editor.gridSize) * editor.gridSize
+            };
+        }
+
+        function finishPolygon() {
+            if (editor.currentPolygon.length >= 3) {
+                editor.collisionPolygons.push([...editor.currentPolygon]);
+                editor.currentPolygon = [];
+                updateCollisionInfo();
+                render();
+            }
+        }
+
+        function placeSpawner(x, y) {
+            const snapped = snapToGrid(x, y);
+            const id = `spawner_${Object.keys(editor.spawners).length + 1}`;
+            
+            const spawner = {
+                type: editor.spawnerType === 'player' ? 'player' : (editor.spawnerType === 'item' ? 'item' : 'single'),
+                position: [snapped.x, snapped.y]
+            };
+
+            if (editor.spawnerType === 'player') {
+                spawner.index = 1;
+            } else if (editor.spawnerType === 'enemy') {
+                spawner.entity = document.getElementById('spawner-entity').value;
+            } else if (editor.spawnerType === 'item') {
+                spawner.item = document.getElementById('spawner-item').value;
+            }
+
+            editor.spawners[id] = spawner;
+            render();
+        }
+
+        function placeTexture(x, y) {
+            const snapped = snapToGrid(x, y);
+            const texture = {
+                name: document.getElementById('texture-name').value || `texture_${editor.textures.length + 1}`,
+                texture: document.getElementById('texture-path').value || 'assets/textures/placeholder.png',
+                layer: parseInt(document.getElementById('texture-layer').value) || 10,
+                position: [snapped.x, snapped.y],
+                size: [
+                    parseInt(document.getElementById('texture-width').value) || 100,
+                    parseInt(document.getElementById('texture-height').value) || 100
+                ]
+            };
+            editor.textures.push(texture);
+            render();
+        }
+
+        function selectObject(x, y) {
+            // Check spawners first (smaller, so check them first)
+            for (const [id, spawner] of Object.entries(editor.spawners)) {
+                const dist = Math.hypot(spawner.position[0] - x, spawner.position[1] - y);
+                if (dist < 20) {
+                    editor.selectedObject = {type: 'spawner', id, data: spawner};
+                    render();
+                    return;
+                }
+            }
+            
+            // Check textures
+            for (let i = 0; i < editor.textures.length; i++) {
+                const tex = editor.textures[i];
+                if (x >= tex.position[0] && x <= tex.position[0] + tex.size[0] &&
+                    y >= tex.position[1] && y <= tex.position[1] + tex.size[1]) {
+                    editor.selectedObject = {type: 'texture', index: i, data: tex};
+                    render();
+                    return;
+                }
+            }
+            
+            // Check collision polygons
+            for (let i = 0; i < editor.collisionPolygons.length; i++) {
+                const poly = editor.collisionPolygons[i];
+                if (isPointInPolygon(x, y, poly)) {
+                    editor.selectedObject = {type: 'polygon', index: i, data: poly};
+                    render();
+                    return;
+                }
+            }
+            
+            editor.selectedObject = null;
+            render();
+        }
+
+        function isPointInPolygon(x, y, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i][0], yi = polygon[i][1];
+                const xj = polygon[j][0], yj = polygon[j][1];
+                
+                const intersect = ((yi > y) !== (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function deleteSelected() {
+            if (!editor.selectedObject) return;
+            
+            if (editor.selectedObject.type === 'spawner') {
+                delete editor.spawners[editor.selectedObject.id];
+            } else if (editor.selectedObject.type === 'texture') {
+                editor.textures.splice(editor.selectedObject.index, 1);
+            } else if (editor.selectedObject.type === 'polygon') {
+                editor.collisionPolygons.splice(editor.selectedObject.index, 1);
+            }
+            
+            editor.selectedObject = null;
+            render();
+        }
+
+        function updateJSONDisplay() {
+            const data = {
+                general: {
+                    background: {
+                        texture: "assets/textures/floortile192x192.png",
+                        layer: 0,
+                        size: [editor.mapWidth, editor.mapHeight]
+                    }
+                },
+                groups: {
+                    terrain: {
+                        origin: [0, 0],
+                        collision: editor.collisionPolygons,
+                        textures: editor.textures
+                    }
+                },
+                spawners: editor.spawners
+            };
+            
+            const jsonStr = JSON.stringify(data, null, 2);
+            document.getElementById('json-display').textContent = jsonStr;
+        }
+
+        function render() {
+            const ctx = editor.ctx;
+            const w = editor.canvas.width;
+            const h = editor.canvas.height;
+
+            // Clear
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.save();
+
+            // Draw grid
+            if (editor.showGrid) {
+                ctx.strokeStyle = '#3a3a3a';
+                ctx.lineWidth = 1;
+                
+                for (let x = 0; x < editor.mapWidth; x += editor.gridSize) {
+                    const screenPos = worldToScreen(x, 0);
+                    ctx.beginPath();
+                    ctx.moveTo(screenPos.x, 0);
+                    ctx.lineTo(screenPos.x, h);
+                    ctx.stroke();
+                }
+                
+                for (let y = 0; y < editor.mapHeight; y += editor.gridSize) {
+                    const screenPos = worldToScreen(0, y);
+                    ctx.beginPath();
+                    ctx.moveTo(0, screenPos.y);
+                    ctx.lineTo(w, screenPos.y);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw map bounds
+            const tl = worldToScreen(0, 0);
+            const br = worldToScreen(editor.mapWidth, editor.mapHeight);
+            ctx.strokeStyle = '#4a9eff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+            // Draw collision polygons
+            editor.collisionPolygons.forEach((poly, index) => {
+                if (poly.length < 2) return;
+                
+                const isSelected = editor.selectedObject && 
+                                 editor.selectedObject.type === 'polygon' && 
+                                 editor.selectedObject.index === index;
+                
+                ctx.strokeStyle = isSelected ? '#ffff00' : '#ff4a9e';
+                ctx.fillStyle = isSelected ? 'rgba(255, 255, 0, 0.3)' : 'rgba(255, 74, 158, 0.2)';
+                ctx.lineWidth = isSelected ? 3 : 2;
+                
+                ctx.beginPath();
+                const first = worldToScreen(poly[0][0], poly[0][1]);
+                ctx.moveTo(first.x, first.y);
+                for (let i = 1; i < poly.length; i++) {
+                    const p = worldToScreen(poly[i][0], poly[i][1]);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            // Draw current polygon
+            if (editor.currentPolygon.length > 0) {
+                ctx.strokeStyle = '#ffff4a';
+                ctx.fillStyle = 'rgba(255, 255, 74, 0.2)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                const first = worldToScreen(editor.currentPolygon[0][0], editor.currentPolygon[0][1]);
+                ctx.moveTo(first.x, first.y);
+                for (let i = 1; i < editor.currentPolygon.length; i++) {
+                    const p = worldToScreen(editor.currentPolygon[i][0], editor.currentPolygon[i][1]);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+
+                // Draw points
+                editor.currentPolygon.forEach(point => {
+                    const p = worldToScreen(point[0], point[1]);
+                    ctx.fillStyle = '#ffff4a';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // Draw spawners
+            for (const [id, spawner] of Object.entries(editor.spawners)) {
+                const p = worldToScreen(spawner.position[0], spawner.position[1]);
+                
+                let color = '#ff4a4a';
+                if (spawner.type === 'player') color = '#4a9eff';
+                if (spawner.type === 'item') color = '#4aff4a';
+                
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                
+                if (editor.selectedObject && editor.selectedObject.id === id) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                
+                // Draw label
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(id, p.x, p.y + 20);
+            }
+
+            // Draw objects (chests, etc.)
+            if (editor.objects) {
+                editor.objects.forEach((obj, index) => {
+                    const isSelected = editor.selectedObject && 
+                                     editor.selectedObject.type === 'object' && 
+                                     editor.selectedObject.index === index;
+                    
+                    const p = worldToScreen(obj.position[0], obj.position[1]);
+                    
+                    // Draw based on object type
+                    if (obj.objectType === 'chest') {
+                        ctx.fillStyle = isSelected ? 'rgba(255, 215, 0, 0.8)' : 'rgba(218, 165, 32, 0.8)';
+                        ctx.fillRect(p.x - 20, p.y - 20, 40, 40);
+                        ctx.strokeStyle = isSelected ? '#ffff00' : '#DAA520';
+                        ctx.lineWidth = isSelected ? 3 : 2;
+                        ctx.strokeRect(p.x - 20, p.y - 20, 40, 40);
+                        
+                        // Draw interaction circle
+                        ctx.strokeStyle = isSelected ? '#ffff00' : '#ffffff';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                    
+                    // Draw label
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(obj.id || obj.objectType, p.x, p.y + 50);
+                });
+            }
+
+            // Draw textures (as rectangles)
+            editor.textures.forEach((tex, index) => {
+                const isSelected = editor.selectedObject && 
+                                 editor.selectedObject.type === 'texture' && 
+                                 editor.selectedObject.index === index;
+                
+                ctx.strokeStyle = isSelected ? '#ffff00' : '#4aff9e';
+                ctx.fillStyle = isSelected ? 'rgba(255, 255, 0, 0.3)' : 'rgba(74, 255, 158, 0.2)';
+                ctx.lineWidth = isSelected ? 3 : 1;
+                
+                const tl = worldToScreen(tex.position[0], tex.position[1]);
+                const size = {x: tex.size[0] * editor.zoom, y: tex.size[1] * editor.zoom};
+                ctx.fillRect(tl.x, tl.y, size.x, size.y);
+                ctx.strokeRect(tl.x, tl.y, size.x, size.y);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Arial';
+                ctx.fillText(tex.name, tl.x + 5, tl.y + 15);
+            });
+
+            ctx.restore();
+            
+            // Update JSON display
+            updateJSONDisplay();
+        }
+
+        function toggleGrid() {
+            editor.showGrid = !editor.showGrid;
+            document.getElementById('toggle-grid').textContent = `Grid: ${editor.showGrid ? 'ON' : 'OFF'}`;
+            render();
+        }
+
+        function toggleSnap() {
+            editor.snapToGrid = !editor.snapToGrid;
+            document.getElementById('toggle-snap').textContent = `Snap: ${editor.snapToGrid ? 'ON' : 'OFF'}`;
+        }
+
+        function resetView() {
+            editor.offsetX = 0;
+            editor.offsetY = 0;
+            editor.zoom = 1;
+            render();
+        }
+
+        function exportJSON() {
+            const data = {
+                general: {
+                    background: {
+                        texture: "assets/textures/floortile192x192.png",
+                        layer: 0,
+                        size: [editor.mapWidth, editor.mapHeight]
+                    }
+                },
+                groups: {
+                    terrain: {
+                        origin: [0, 0],
+                        collision: editor.collisionPolygons,
+                        textures: editor.textures
+                    }
+                },
+                spawners: editor.spawners
+            };
+
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'map.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importJSON() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        loadMapData(data);
+                    } catch (err) {
+                        alert('Error loading JSON: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function loadMapData(data) {
+            editor.collisionPolygons = [];
+            editor.spawners = data.spawners || {};
+            editor.textures = [];
+            editor.objects = [];
+
+            // Load collision, textures, and objects from ALL groups
+            if (data.groups) {
+                for (const groupName in data.groups) {
+                    const group = data.groups[groupName];
+                    
+                    // Load collision polygons from this group
+                    if (group.collision) {
+                        for (const poly of group.collision) {
+                            editor.collisionPolygons.push(poly);
+                        }
+                    }
+                    
+                    // Load textures from this group
+                    if (group.textures) {
+                        for (const tex of group.textures) {
+                            editor.textures.push(tex);
+                        }
+                    }
+                    
+                    // Load objects from this group
+                    if (group.objects) {
+                        for (const obj of group.objects) {
+                            editor.objects.push({
+                                id: obj.id,
+                                objectType: obj.type,
+                                position: obj.position,
+                                trigger: obj.trigger
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (data.general && data.general.background && data.general.background.size) {
+                editor.mapWidth = data.general.background.size[0];
+                editor.mapHeight = data.general.background.size[1];
+                document.getElementById('map-width').value = editor.mapWidth;
+                document.getElementById('map-height').value = editor.mapHeight;
+            }
+
+            updateCollisionInfo();
+            render();
+        }
+
+        function newMap() {
+            if (confirm('Create new map? This will clear the current map.')) {
+                editor.collisionPolygons = [];
+                editor.currentPolygon = [];
+                editor.spawners = {};
+                editor.textures = [];
+                editor.selectedObject = null;
+                updateCollisionInfo();
+                render();
+            }
+        }
+
+        function updateStatus(extra = '') {
+            const toolName = editor.tool.charAt(0).toUpperCase() + editor.tool.slice(1);
+            document.getElementById('status-bar').textContent = 
+                `Tool: ${toolName} | ${extra || 'Ready'}`;
+        }
+
+        function updateCollisionInfo() {
+            document.getElementById('collision-count').value = editor.collisionPolygons.length;
+            document.getElementById('collision-points').value = editor.currentPolygon.length;
+        }
+
+        function updatePropertiesPanel() {
+            // Hide all property sections
+            document.querySelectorAll('.props-section').forEach(el => el.style.display = 'none');
+            
+            // Show relevant section
+            if (editor.tool === 'collision') {
+                document.getElementById('props-collision').style.display = 'block';
+            } else if (editor.tool === 'spawner') {
+                document.getElementById('props-spawner').style.display = 'block';
+            } else if (editor.tool === 'texture') {
+                document.getElementById('props-texture').style.display = 'block';
+            }
+            
+            document.getElementById('props-map').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

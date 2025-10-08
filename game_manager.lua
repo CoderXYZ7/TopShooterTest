@@ -31,12 +31,6 @@ end
 
 function GameManager:update(dt, player, enemies, particles, ui)
     if self.currentState == "PLAYING" then
-        -- Update wave system
-        self:updateWaveSystem(dt, enemies, ui, player)
-        
-        -- Update enemy spawning
-        self:updateEnemySpawning(dt, enemies)
-        
         -- Update pickup spawning
         self:updatePickupSpawning(dt)
         
@@ -44,12 +38,6 @@ function GameManager:update(dt, player, enemies, particles, ui)
         if not player:isAlive() then
             self.currentState = "GAME_OVER"
             ui:gameOverScreen()
-        end
-        
-        -- Check for victory condition (survive 10 waves)
-        if self.wave > 10 then
-            self.currentState = "VICTORY"
-            ui:victoryScreen()
         end
         
         -- Update pickups
@@ -320,20 +308,64 @@ function GameManager:getShopTimeLeft()
     return math.max(0, self.shopDuration - self.shopTimer)
 end
 
+function GameManager:initializeSpawners(map)
+    if not map then return end
+
+    -- Set player spawn position
+    local playerSpawns = map:getSpawners("player")
+    if #playerSpawns > 0 then
+        self.playerSpawnPoint = {
+            x = playerSpawns[1].position[1],
+            y = playerSpawns[1].position[2]
+        }
+    end
+end
+
+function GameManager:spawnMapEntities(enemies)
+    if not self.map then return end
+
+    -- Spawn single entities (not tied to waves)
+    local singleSpawners = self.map:getSpawners("single")
+    for _, spawner in ipairs(singleSpawners) do
+        local enemyType = spawner.entity
+        if enemyType and not spawner.spawned then
+            local enemy = self.createEnemy(spawner.position[1], spawner.position[2], enemyType)
+            if enemy then
+                table.insert(enemies, enemy)
+                spawner.spawned = true -- Mark as spawned
+            end
+        end
+    end
+
+    -- Potentially add wave spawners here if wanted, but keeping them separate as requested
+end
+
+function GameManager:spawnEnemyFromMapSpawner(spawner)
+    local enemyType = spawner.entities[math.random(#spawner.entities)]
+    local angle = math.rad(math.random(0, 360))
+    local distance = math.random(0, spawner.spawn_range)
+    local x = spawner.position[1] + math.cos(angle) * distance
+    local y = spawner.position[2] + math.sin(angle) * distance
+
+    local enemy = self.createEnemy(x, y, enemyType)
+    table.insert(enemies, enemy)
+    return enemy
+end
+
 function GameManager:buyItem(player, itemType, itemData)
     if not self:isShopOpen() then
         return false, "Shop is not open"
     end
-    
+
     local cost = 0
     local success = false
-    
+
     if itemType == "weapon" then
         cost = self.shop:getWeaponCost(itemData.weaponType)
         if player:spendMoney(cost) then
             success = player:addWeapon(itemData.weaponType)
             if not success then
-                player:addMoney(cost)  -- Refund if weapon couldn't be added
+                player:addMoney(cost) -- Refund if weapon couldn't be added
                 return false, "Already have this weapon"
             end
         else
@@ -368,14 +400,14 @@ function GameManager:buyItem(player, itemType, itemData)
         if player:spendMoney(cost) then
             success, message = player:purchaseUpgrade(itemData.upgradeType)
             if not success then
-                player:addMoney(cost)  -- Refund if upgrade couldn't be purchased
+                player:addMoney(cost) -- Refund if upgrade couldn't be purchased
                 return false, message
             end
         else
             return false, "Not enough money"
         end
     end
-    
+
     return success, success and "Purchase successful" or "Purchase failed"
 end
 

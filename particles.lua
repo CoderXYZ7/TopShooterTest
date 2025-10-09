@@ -128,6 +128,43 @@ function Particles:createDashTrail(player)
     return system.id
 end
 
+function Particles:createDashImpact(x, y)
+    local system = {
+        id = self.nextId,
+        x = x,
+        y = y,
+        particles = {},
+        lifetime = 0.4,
+        age = 0,
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES  -- Dash impact appears at entity level
+    }
+    
+    -- Create impact particles (blue/white energy burst)
+    for i = 1, 15 do
+        local angle = math.random() * math.pi * 2
+        local speed = math.random(50, 150)
+        local size = math.random(3, 8)
+        local colorChoice = math.random()
+        local color = colorChoice > 0.5 and {0.2, 0.6, 1.0} or {0.8, 0.9, 1.0}  -- Blue or light blue/white
+        
+        table.insert(system.particles, {
+            x = x,
+            y = y,
+            vx = math.cos(angle) * speed,
+            vy = math.sin(angle) * speed,
+            size = size,
+            color = color,
+            lifetime = math.random(0.2, 0.4),
+            age = 0
+        })
+    end
+    
+    self.nextId = self.nextId + 1
+    table.insert(self.systems, system)
+    return system.id
+end
+
 function Particles:createPickupEffect(x, y, color)
     local system = {
         id = self.nextId,

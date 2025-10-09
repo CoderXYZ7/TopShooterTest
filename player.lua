@@ -50,7 +50,8 @@ function Player:new()
             movement_speed = 0,
             max_health = 0,
             dash_cooldown = 0,
-            ammo_capacity = 0
+            ammo_capacity = 0,
+            dash_damage = 0
         }
     }
     setmetatable(player, { __index = self })
@@ -410,6 +411,49 @@ function Player:swapWeaponWithInventory(slot, inventoryIndex)
         return true
     end
     return false
+end
+
+-- New methods for loadout manager
+function Player:unequipWeapon(slot)
+    if slot >= 1 and slot <= 3 then
+        local weapon = self.weaponSlots[slot]
+        self.weaponSlots[slot] = nil
+        -- Update current weapon slot if needed
+        if self.currentWeaponSlot == slot then
+            -- Find another equipped weapon to switch to
+            for i = 1, 3 do
+                if i ~= slot and self.weaponSlots[i] then
+                    self.currentWeaponSlot = i
+                    break
+                end
+            end
+            -- If no other weapons equipped, stay on empty slot
+        end
+        return weapon
+    end
+    return nil
+end
+
+function Player:removeWeaponFromInventory(index)
+    if index >= 1 and index <= #self.unequippedWeapons then
+        local weapon = self.unequippedWeapons[index]
+        table.remove(self.unequippedWeapons, index)
+        return weapon
+    end
+    return nil
+end
+
+function Player:equipWeapon(slot, weapon)
+    if slot >= 1 and slot <= 3 then
+        self.weaponSlots[slot] = weapon
+        return true
+    end
+    return false
+end
+
+function Player:addWeaponToInventory(weapon)
+    table.insert(self.unequippedWeapons, weapon)
+    return true
 end
 
 function Player:getWeaponSlots()

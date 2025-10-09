@@ -18,10 +18,14 @@ function UI:new()
         shopMessage = "",
         shopMessageTimer = 0,
         loadoutMode = false,
-        selectedLoadoutSlot = 1,
-        selectedInventoryWeapon = 1,
         shopScrollOffset = 0,
-        visibleShopItems = 6  -- Number of items visible in shop at once
+        visibleShopItems = 6,  -- Number of items visible in shop at once
+        -- New loadout manager state
+        loadoutSelector = {
+            panel = "loadout",  -- "loadout" or "inventory"
+            index = 1,          -- Current selection index
+            heldWeapon = nil    -- Currently held weapon
+        }
     }
     setmetatable(ui, { __index = self })
     return ui
@@ -174,6 +178,11 @@ function UI:reset()
     self.showTutorial = true
     self.tutorialTime = 0
     self.shopScrollOffset = 0
+    self.loadoutSelector = {
+        panel = "loadout",
+        index = 1,
+        heldWeapon = nil
+    }
 end
 
 function UI:getScore()
@@ -383,7 +392,7 @@ function UI:updateShopMessage(dt)
     end
 end
 
--- Loadout management methods
+-- Loadout management methods - Dual Panel System
 function UI:drawLoadoutManager(player)
     if not self.loadoutMode then
         return
@@ -398,76 +407,121 @@ function UI:drawLoadoutManager(player)
     love.graphics.print("LOADOUT MANAGEMENT", love.graphics.getWidth()/2 - 100, 120)
     love.graphics.print("Press TAB to exit loadout mode", love.graphics.getWidth()/2 - 120, 150)
     
-    -- Draw equipped weapon slots
-    love.graphics.print("EQUIPPED WEAPONS", 150, 200)
+    -- Calculate panel dimensions
+    local panelWidth = (love.graphics.getWidth() - 300) / 2
+    local panelHeight = love.graphics.getHeight() - 300
+    
+    -- Draw left panel (Loadout - Equipped Weapons)
+    love.graphics.setColor(0.2, 0.2, 0.3, 0.8)
+    love.graphics.rectangle('fill', 150, 200, panelWidth, panelHeight)
+    love.graphics.setColor(0.4, 0.4, 0.8, 1)
+    love.graphics.rectangle('line', 150, 200, panelWidth, panelHeight)
+    
+    -- Draw right panel (Inventory - Unequipped Weapons)
+    love.graphics.setColor(0.2, 0.3, 0.2, 0.8)
+    love.graphics.rectangle('fill', 150 + panelWidth + 20, 200, panelWidth, panelHeight)
+    love.graphics.setColor(0.4, 0.8, 0.4, 1)
+    love.graphics.rectangle('line', 150 + panelWidth + 20, 200, panelWidth, panelHeight)
+    
+    -- Draw panel titles
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("LOADOUT (EQUIPPED)", 150 + panelWidth/2 - 80, 180)
+    love.graphics.print("INVENTORY (UNEQUIPPED)", 150 + panelWidth + 20 + panelWidth/2 - 100, 180)
+    
+    -- Draw equipped weapons (left panel)
     local slots = player:getWeaponSlots()
+    local slotHeight = panelHeight / 3
     
     for slot = 1, 3 do
         local weapon = slots[slot]
-        local x = 150 + (slot - 1) * 200
-        local y = 230
+        local y = 200 + (slot - 1) * slotHeight
         
-        -- Draw slot background
-        if slot == self.selectedLoadoutSlot then
-            love.graphics.setColor(0.2, 0.6, 1, 0.8)  -- Highlight selected slot
+        -- Draw slot background with highlight if selected
+        if self.loadoutSelector.panel == "loadout" and self.loadoutSelector.index == slot then
+            love.graphics.setColor(0.3, 0.5, 1, 0.6)  -- Highlight selected slot
         else
-            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+            love.graphics.setColor(0.3, 0.3, 0.4, 0.6)
         end
-        love.graphics.rectangle('fill', x, y, 180, 80)
+        love.graphics.rectangle('fill', 160, y + 10, panelWidth - 20, slotHeight - 20)
         
         -- Draw weapon info
         love.graphics.setColor(1, 1, 1)
         if weapon then
-            love.graphics.print("Slot " .. slot, x + 10, y + 5)
-            love.graphics.print(weapon:getWeaponName(), x + 10, y + 25)
+            love.graphics.print("SLOT " .. slot, 170, y + 20)
+            love.graphics.print(weapon:getWeaponName(), 170, y + 40)
             local ammo, maxAmmo = weapon:getAmmoInfo()
-            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, x + 10, y + 45)
+            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, 170, y + 60)
+            
+            -- Show ammo type
+            local ammoType = weapon.ammoType
+            love.graphics.print("Type: " .. ammoType, 170, y + 80)
         else
-            love.graphics.print("Slot " .. slot, x + 10, y + 5)
-            love.graphics.print("Empty", x + 70, y + 40)
+            love.graphics.print("SLOT " .. slot, 170, y + 20)
+            love.graphics.print("EMPTY", 170, y + 50)
         end
     end
     
-    -- Draw unequipped weapons
+    -- Draw unequipped weapons (right panel)
     local unequipped = player:getUnequippedWeapons()
-    love.graphics.print("UNEQUIPPED WEAPONS", 150, 350)
+    local itemHeight = 80
     
-    if #unequipped > 0 then
-        for i, weapon in ipairs(unequipped) do
-            local x = 150 + ((i - 1) % 3) * 200
-            local y = 380 + math.floor((i - 1) / 3) * 80
-            
-            -- Draw weapon background
-            if i == self.selectedInventoryWeapon then
-                love.graphics.setColor(0.2, 0.8, 0.2, 0.8)  -- Highlight selected inventory weapon
-            else
-                love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
-            end
-            love.graphics.rectangle('fill', x, y, 180, 60)
-            
-            -- Draw weapon info
-            love.graphics.setColor(1, 1, 1)
-            love.graphics.print(weapon:getWeaponName(), x + 10, y + 5)
-            local ammo, maxAmmo = weapon:getAmmoInfo()
-            love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, x + 10, y + 25)
+    for i, weapon in ipairs(unequipped) do
+        local y = 200 + (i - 1) * itemHeight
+        
+        -- Skip if outside panel
+        if y + itemHeight > 200 + panelHeight then
+            break
         end
-    else
-        love.graphics.print("No unequipped weapons", 150, 380)
+        
+        -- Draw weapon background with highlight if selected
+        if self.loadoutSelector.panel == "inventory" and self.loadoutSelector.index == i then
+            love.graphics.setColor(0.3, 0.8, 0.3, 0.6)  -- Highlight selected inventory item
+        else
+            love.graphics.setColor(0.3, 0.4, 0.3, 0.6)
+        end
+        love.graphics.rectangle('fill', 150 + panelWidth + 30, y + 10, panelWidth - 40, itemHeight - 20)
+        
+        -- Draw weapon info
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(weapon:getWeaponName(), 150 + panelWidth + 40, y + 20)
+        local ammo, maxAmmo = weapon:getAmmoInfo()
+        love.graphics.print("Ammo: " .. ammo .. "/" .. maxAmmo, 150 + panelWidth + 40, y + 40)
+        
+        -- Show ammo type
+        local ammoType = weapon.ammoType
+        love.graphics.print("Type: " .. ammoType, 150 + panelWidth + 40, y + 60)
+    end
+    
+    -- Draw "No weapons" message if inventory is empty
+    if #unequipped == 0 then
+        love.graphics.print("No weapons in inventory", 150 + panelWidth + 20 + panelWidth/2 - 80, 200 + panelHeight/2)
+    end
+    
+    -- Draw held weapon indicator
+    if self.loadoutSelector.heldWeapon then
+        local weapon = self.loadoutSelector.heldWeapon
+        love.graphics.setColor(1, 1, 0, 0.8)
+        love.graphics.print("HOLDING: " .. weapon:getWeaponName(), love.graphics.getWidth()/2 - 100, love.graphics.getHeight() - 180)
+        love.graphics.setColor(1, 1, 1)
     end
     
     -- Draw instructions
-    love.graphics.setColor(1, 1, 1, 0.6)
-    love.graphics.print("ARROW KEYS: Navigate", 150, love.graphics.getHeight() - 150)
-    love.graphics.print("ENTER: Swap selected slot with selected inventory weapon", 150, love.graphics.getHeight() - 130)
-    love.graphics.print("S: Swap weapon slots (when both slots selected)", 150, love.graphics.getHeight() - 110)
+    love.graphics.setColor(1, 1, 1, 0.8)
+    love.graphics.print("ARROW KEYS: Move selector", 150, love.graphics.getHeight() - 150)
+    love.graphics.print("SPACE: Pick up/drop weapon", 150, love.graphics.getHeight() - 130)
+    love.graphics.print("Hold a weapon and move to transfer between panels", 150, love.graphics.getHeight() - 110)
     love.graphics.setColor(1, 1, 1)
 end
 
 function UI:toggleLoadoutMode()
     self.loadoutMode = not self.loadoutMode
     if self.loadoutMode then
-        self.selectedLoadoutSlot = 1
-        self.selectedInventoryWeapon = 1
+        -- Reset selector state
+        self.loadoutSelector = {
+            panel = "loadout",
+            index = 1,
+            heldWeapon = nil
+        }
     end
 end
 
@@ -480,39 +534,86 @@ function UI:handleLoadoutInput(key, player)
         return false
     end
     
+    local slots = player:getWeaponSlots()
     local unequipped = player:getUnequippedWeapons()
     
     if key == 'up' then
-        if self.selectedLoadoutSlot > 1 then
-            self.selectedLoadoutSlot = self.selectedLoadoutSlot - 1
+        -- Move selector up
+        if self.loadoutSelector.panel == "loadout" then
+            if self.loadoutSelector.index > 1 then
+                self.loadoutSelector.index = self.loadoutSelector.index - 1
+            end
+        else
+            if self.loadoutSelector.index > 1 then
+                self.loadoutSelector.index = self.loadoutSelector.index - 1
+            end
         end
         return true
+        
     elseif key == 'down' then
-        if self.selectedLoadoutSlot < 3 then
-            self.selectedLoadoutSlot = self.selectedLoadoutSlot + 1
+        -- Move selector down
+        if self.loadoutSelector.panel == "loadout" then
+            if self.loadoutSelector.index < 3 then
+                self.loadoutSelector.index = self.loadoutSelector.index + 1
+            end
+        else
+            if self.loadoutSelector.index < #unequipped then
+                self.loadoutSelector.index = self.loadoutSelector.index + 1
+            end
         end
         return true
-    elseif key == 'left' then
-        if self.selectedInventoryWeapon > 1 then
-            self.selectedInventoryWeapon = self.selectedInventoryWeapon - 1
+        
+    elseif key == 'left' or key == 'right' then
+        -- Switch between panels
+        if self.loadoutSelector.panel == "loadout" then
+            self.loadoutSelector.panel = "inventory"
+            self.loadoutSelector.index = math.min(self.loadoutSelector.index, math.max(1, #unequipped))
+        else
+            self.loadoutSelector.panel = "loadout"
+            self.loadoutSelector.index = math.min(self.loadoutSelector.index, 3)
         end
         return true
-    elseif key == 'right' then
-        if self.selectedInventoryWeapon < #unequipped then
-            self.selectedInventoryWeapon = self.selectedInventoryWeapon + 1
+        
+    elseif key == 'space' then
+        -- Pick up or drop weapon
+        if self.loadoutSelector.heldWeapon then
+            -- Drop the held weapon
+            if self.loadoutSelector.panel == "loadout" then
+                -- Drop into loadout slot
+                local targetSlot = self.loadoutSelector.index
+                local currentWeapon = slots[targetSlot]
+                
+                if currentWeapon then
+                    -- Swap weapons
+                    player:addWeaponToInventory(self.loadoutSelector.heldWeapon)
+                    player:equipWeapon(targetSlot, currentWeapon)
+                else
+                    -- Just equip the held weapon
+                    player:equipWeapon(targetSlot, self.loadoutSelector.heldWeapon)
+                end
+            else
+                -- Drop into inventory
+                player:addWeaponToInventory(self.loadoutSelector.heldWeapon)
+            end
+            
+            self.loadoutSelector.heldWeapon = nil
+            
+        else
+            -- Pick up weapon from current selection
+            if self.loadoutSelector.panel == "loadout" then
+                local weapon = slots[self.loadoutSelector.index]
+                if weapon then
+                    self.loadoutSelector.heldWeapon = weapon
+                    player:unequipWeapon(self.loadoutSelector.index)
+                end
+            else
+                local weapon = unequipped[self.loadoutSelector.index]
+                if weapon then
+                    self.loadoutSelector.heldWeapon = weapon
+                    player:removeWeaponFromInventory(self.loadoutSelector.index)
+                end
+            end
         end
-        return true
-    elseif key == 'return' then
-        -- Swap selected slot with selected inventory weapon
-        if #unequipped > 0 then
-            player:swapWeaponWithInventory(self.selectedLoadoutSlot, self.selectedInventoryWeapon)
-        end
-        return true
-    elseif key == 's' then
-        -- Swap weapon slots
-        local targetSlot = (self.selectedLoadoutSlot % 3) + 1
-        player:moveWeapon(self.selectedLoadoutSlot, targetSlot)
-        self.selectedLoadoutSlot = targetSlot
         return true
     end
     

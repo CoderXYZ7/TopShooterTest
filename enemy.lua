@@ -304,6 +304,8 @@ function Enemy:getDrops()
     local config = Enemy.TYPES[self.type]
     local drops = {}
 
+    print("grt drops")
+
     if config.drops then
         for _, drop in ipairs(config.drops) do
             if math.random() < drop.chance then

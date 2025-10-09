@@ -126,6 +126,13 @@ Shop.UPGRADE_COSTS = {
         description = "+25% ammo capacity",
         maxLevel = 4,
         effect = "ammo_capacity"
+    },
+    DASH_DAMAGE = {
+        cost = 600,
+        name = "Dash Attack",
+        description = "Damage enemies when dashing toward them",
+        maxLevel = 3,
+        effect = "dash_damage"
     }
 }
 

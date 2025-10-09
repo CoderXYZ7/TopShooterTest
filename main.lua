@@ -228,6 +228,13 @@ function love.update(dt)
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)
                     game.ui:addScore(enemy:getScore())
+                    
+                    -- Handle enemy drops (FIXED: Added missing drop logic)
+                    local drops = enemy:getDrops()
+                    for _, drop in ipairs(drops) do
+                        game.gameManager:createDrop(ex, ey, drop.type, drop.amount)
+                    end
+                    
                     game.gameManager:enemyKilled()
                     table.insert(deadEnemyIndices, hit.enemyIndex)
                 else
@@ -256,6 +263,40 @@ function love.update(dt)
         -- Create dash trail effect
         if game.player.isDashing then
             game.particles:createDashTrail(game.player)
+            
+            -- Check for dash damage to enemies
+            local dashDamageLevel = game.player:getUpgradeLevel("dash_damage")
+            if dashDamageLevel > 0 then
+                -- Calculate dash damage based on level (20, 40, 60 damage per level)
+                local dashDamage = 20 * dashDamageLevel
+                local playerX, playerY = game.player:getCenter()
+                
+                for i, enemy in ipairs(game.enemies) do
+                    local ex, ey = enemy:getCenter()
+                    local dx = ex - playerX
+                    local dy = ey - playerY
+                    local dist = math.sqrt(dx*dx + dy*dy)
+                    
+                    -- Damage enemies within 80 pixels during dash
+                    if dist < 80 then
+                        -- Create dash impact effect
+                        game.particles:createDashImpact(ex, ey)
+                        
+                        -- Damage the enemy
+                        if enemy:takeDamage(dashDamage) then
+                            -- Enemy died from dash damage
+                            game.particles:createBloodSplat(ex, ey)
+                            game.ui:addScore(enemy:getScore())
+                            game.gameManager:enemyKilled()
+                            table.remove(game.enemies, i)
+                            break  -- Break to avoid index issues
+                        else
+                            -- Enemy hit but not killed
+                            game.particles:createBloodSplat(ex, ey)
+                        end
+                    end
+                end
+            end
         end
     end
     

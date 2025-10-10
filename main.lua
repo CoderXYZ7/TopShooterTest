@@ -127,8 +127,8 @@ function love.update(dt)
     end
     
     if game.gameManager:getState() == "PLAYING" then
-        -- Update player and check if they shot
-        local playerShot = game.player:update(dt, game.assets)
+        -- Update player and check if they shot (returns playerShot, chargeTime for railgun)
+        local playerShot, chargeTime = game.player:update(dt, game.assets)
         
         -- Update enemies and handle attacks
         for i = #game.enemies, 1, -1 do
@@ -224,6 +224,23 @@ function love.update(dt)
                 -- Calculate damage based on distance falloff with upgrade effects
                 local baseDamage = game.player:getEffectiveDamage(weapon)
                 local finalDamage = baseDamage
+                
+                -- Apply railgun charge damage multiplier if applicable
+                if weapon.type == "RAILGUN" and chargeTime then
+                    local weaponConfig = Weapons.TYPES.RAILGUN
+                    if weaponConfig and weaponConfig.specificVars then
+                        local minMultiplier = weaponConfig.specificVars.minDamageMultiplier or 0.5
+                        local maxMultiplier = weaponConfig.specificVars.maxDamageMultiplier or 3.0
+                        local maxChargeTime = weaponConfig.specificVars.maxChargeTime or 3.0
+                        
+                        local chargeProgress = math.min(chargeTime / maxChargeTime, 1.0)
+                        local damageMultiplier = minMultiplier + (maxMultiplier - minMultiplier) * chargeProgress
+                        finalDamage = math.floor(baseDamage * damageMultiplier)
+                        
+                        print(string.format("Railgun fired: Charge time %.2fs, Damage multiplier: %.2fx, Final damage: %d", 
+                              chargeTime, damageMultiplier, finalDamage))
+                    end
+                end
                 
                 -- Apply damage falloff beyond optimal range
                 if hit.hitDistance > weapon.range then

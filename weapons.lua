@@ -5,7 +5,8 @@ local Weapons = {}
 Weapons.AMMO_TYPES = {
     AMMO_9MM = "9mm",
     AMMO_3006 = ".30-06",
-    AMMO_12GAUGE = "12 gauge"
+    AMMO_12GAUGE = "12 gauge",
+    AMMO_SABOT = "Sabot"
 }
 
 -- Weapon types with different characteristics
@@ -103,6 +104,31 @@ Weapons.TYPES = {
             pelletSpread = math.pi/20,  -- Total spread angle in radians (30-degree cone, 60-degree total)
             pellets = 10,  -- Number of pellets per shot
             incrementalReload = true  -- Enables bullet-by-bullet loading animation
+        }
+    },
+    RAILGUN = {
+        name = "Railgun",
+        damage = 50,      -- Base damage (will be scaled by charge)
+        fireRate = 0.5,   -- Minimum time between shots (cooldown)
+        ammoCapacity = 3, -- Single shot, then reload
+        reloadTime = 4.0,
+        accuracy = 0.99,  -- Very accurate
+        range = 1000,     -- Very long range
+        maxRange = 1500,  -- Maximum effective range
+        animationSpeed = 1.0,
+        muzzleOffset = {x = 0, y = 0},
+        ammoType = Weapons.AMMO_TYPES.AMMO_SABOT,
+        canMoveWhileShooting = false,
+        canAimWhileShooting = true,
+        collateral = 10,  -- Can pierce through many enemies
+        collateralFalloff = 0.9,  -- 10% damage reduction per enemy
+        screenShakeIntensity = 1.0,  -- Strong shake
+        specificVars = {
+            maxChargeTime = 3.0,    -- Maximum charge time in seconds
+            minDamageMultiplier = 0.5,  -- Minimum damage multiplier
+            maxDamageMultiplier = 3.0,  -- Maximum damage multiplier at full charge
+            chargeSoundEffect = "railgun_charge",  -- Sound effect for charging
+            fireSoundEffect = "railgun_fire"       -- Sound effect for firing
         }
     }
 }

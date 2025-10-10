@@ -35,6 +35,11 @@ Shop.WEAPON_COSTS = {
         cost = 600,
         name = "Shotgun",
         description = "Close-range pellet weapon with high spread"
+    },
+    RAILGUN = {
+        cost = 1200,
+        name = "Railgun",
+        description = "Charge-up weapon - damage increases with charge time"
     }
 }
 

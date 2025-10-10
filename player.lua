@@ -24,7 +24,7 @@ function Player:new()
         weaponSlots = {
             [1] = Weapons:new("SEMI_AUTO_PISTOL"),  -- Start with pistol in slot 1
             [2] = Weapons:new("SHOTGUN"),  -- Empty slot 2
-            [3] = nil   -- Empty slot 3
+            [3] = Weapons:new("RAILGUN")   -- Empty slot 3
         },
         currentWeaponSlot = 1,  -- Start with slot 1 equipped
         unequippedWeapons = {},  -- Weapons not in slots
@@ -34,6 +34,11 @@ function Player:new()
         shootingTime = 0,
         shootingDuration = 0.3,  -- Duration of shooting animation
         shootingCurrentFrame = 1,
+        -- Railgun charging system
+        isCharging = false,
+        chargeStartTime = 0,
+        chargeTime = 0,
+        maxChargeTime = 3.0,  -- Maximum charge time in seconds
         -- Ammo inventory
         ammoInventory = {
             [Weapons.AMMO_TYPES.AMMO_9MM] = 60,  -- Start with 60 9mm rounds
@@ -170,15 +175,50 @@ function Player:update(dt, assets)
         self.angle = math.atan2(mouseWorldY - (self.y + self.height/2), mouseWorldX - (self.x + self.width/2))
     end
 
-    -- Shooting with weapon system
+    -- Handle railgun charging and firing
     local currentWeapon = self:getCurrentWeapon()
-    if love.mouse.isDown(1) and currentWeapon and currentWeapon:canShoot(currentTime) then
-        if currentWeapon:shoot(currentTime) then
-            self.lastShotTime = currentTime
-            self.isShooting = true
-            self.shootingTime = 0
-            self.shootingCurrentFrame = 1
-            return true  -- Signal that player shot
+    if currentWeapon and currentWeapon.type == "RAILGUN" then
+        -- Railgun specific behavior
+        if love.mouse.isDown(1) and currentWeapon:canShoot(currentTime) and not self.isCharging then
+            -- Start charging
+            self.isCharging = true
+            self.chargeStartTime = currentTime
+            self.chargeTime = 0
+        elseif self.isCharging then
+            -- Update charge time
+            self.chargeTime = currentTime - self.chargeStartTime
+            
+            -- Cap charge time at maximum
+            local weaponConfig = Weapons.TYPES.RAILGUN
+            if weaponConfig and weaponConfig.specificVars then
+                self.chargeTime = math.min(self.chargeTime, weaponConfig.specificVars.maxChargeTime)
+            else
+                self.chargeTime = math.min(self.chargeTime, self.maxChargeTime)
+            end
+            
+            -- Check if mouse button released to fire
+            if not love.mouse.isDown(1) then
+                -- Fire the railgun with charge-based damage
+                if currentWeapon:shoot(currentTime) then
+                    self.lastShotTime = currentTime
+                    self.isShooting = true
+                    self.shootingTime = 0
+                    self.shootingCurrentFrame = 1
+                    self.isCharging = false
+                    return true, self.chargeTime  -- Signal that player shot and return charge time
+                end
+            end
+        end
+    else
+        -- Normal weapon behavior
+        if love.mouse.isDown(1) and currentWeapon and currentWeapon:canShoot(currentTime) then
+            if currentWeapon:shoot(currentTime) then
+                self.lastShotTime = currentTime
+                self.isShooting = true
+                self.shootingTime = 0
+                self.shootingCurrentFrame = 1
+                return true  -- Signal that player shot
+            end
         end
     end
     
@@ -344,10 +384,52 @@ function Player:isAlive()
     return self.health > 0
 end
 
+-- Railgun specific methods
+function Player:isChargingRailgun()
+    local currentWeapon = self:getCurrentWeapon()
+    return currentWeapon and currentWeapon.type == "RAILGUN" and self.isCharging
+end
+
+function Player:getChargeProgress()
+    if not self.isCharging then
+        return 0
+    end
+    
+    local weaponConfig = Weapons.TYPES.RAILGUN
+    local maxChargeTime = self.maxChargeTime
+    if weaponConfig and weaponConfig.specificVars then
+        maxChargeTime = weaponConfig.specificVars.maxChargeTime
+    end
+    
+    return math.min(self.chargeTime / maxChargeTime, 1.0)
+end
+
+function Player:getChargeDamageMultiplier()
+    if not self.isCharging then
+        return 1.0
+    end
+    
+    local weaponConfig = Weapons.TYPES.RAILGUN
+    if not weaponConfig or not weaponConfig.specificVars then
+        return 1.0
+    end
+    
+    local minMultiplier = weaponConfig.specificVars.minDamageMultiplier or 0.5
+    local maxMultiplier = weaponConfig.specificVars.maxDamageMultiplier or 3.0
+    
+    local progress = self:getChargeProgress()
+    return minMultiplier + (maxMultiplier - minMultiplier) * progress
+end
+
 -- Inventory management methods
 
 function Player:switchWeaponSlot(slot)
     if slot >= 1 and slot <= 3 and self.weaponSlots[slot] then
+        -- Cancel charging if switching from railgun
+        if self.isCharging then
+            self.isCharging = false
+        end
+        
         self.currentWeaponSlot = slot
         self.weaponSwitchCooldown = 0.5
         return true

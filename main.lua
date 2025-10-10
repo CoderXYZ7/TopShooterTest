@@ -267,6 +267,71 @@ function love.update(dt)
                 -- Damage the enemy with calculated damage
                 local enemy = game.enemies[hit.enemyIndex]
                 if enemy and enemy:takeDamage(finalDamage) then
+                    -- Apply chain lightning if upgrade is active and weapon is railgun (after enemy is defined)
+                    if weapon.type == "RAILGUN" and chargeTime then
+                        local chainLightningLevel = game.player:getUpgradeLevel("chain_lightning")
+                        if chainLightningLevel > 0 then
+                            print(string.format("DEBUG: Chain Lightning level %d active, checking for chain targets", chainLightningLevel))
+                            
+                            -- Find nearby enemies to chain to
+                            local chainTargets = {}
+                            local chainRange = 200  -- Range for chain lightning
+                            local ex, ey = enemy:getCenter()
+                            
+                            for i, otherEnemy in ipairs(game.enemies) do
+                                if i ~= hit.enemyIndex then  -- Don't chain to the original target
+                                    local ox, oy = otherEnemy:getCenter()
+                                    local dx = ox - ex
+                                    local dy = oy - ey
+                                    local dist = math.sqrt(dx*dx + dy*dy)
+                                    
+                                    if dist <= chainRange then
+                                        table.insert(chainTargets, {index = i, enemy = otherEnemy, x = ox, y = oy})
+                                    end
+                                end
+                            end
+                            
+                            print(string.format("DEBUG: Found %d chain targets", #chainTargets))
+                            
+                            -- Damage chain targets with reduced damage
+                            for _, chainTarget in ipairs(chainTargets) do
+                                local chainDamage = math.floor(finalDamage * (0.4 + chainLightningLevel * 0.1))  -- 50%, 60%, 70% damage per level
+                                print(string.format("DEBUG: Chaining to enemy %d, damage: %d", chainTarget.index, chainDamage))
+                                
+                                -- Create chain lightning visual effect from original enemy to chain target
+                                game.particles:createChainLightning(ex, ey, chainTarget.x, chainTarget.y)
+                                
+                                if chainTarget.enemy:takeDamage(chainDamage) then
+                                    -- Enemy died from chain lightning
+                                    game.particles:createBloodSplat(chainTarget.x, chainTarget.y)
+                                    game.ui:addScore(chainTarget.enemy:getScore())
+                                    
+                                    -- Play enemy death sound
+                                    if game.soundManager then
+                                        game.soundManager:playEnemyDeath(chainTarget.x, chainTarget.y)
+                                    end
+                                    
+                                    -- Handle enemy drops
+                                    local drops = chainTarget.enemy:getDrops()
+                                    for _, drop in ipairs(drops) do
+                                        game.gameManager:createDrop(chainTarget.x, chainTarget.y, drop.type, drop.amount)
+                                    end
+                                    
+                                    game.gameManager:enemyKilled()
+                                    table.insert(deadEnemyIndices, chainTarget.index)
+                                else
+                                    -- Enemy hit but not killed
+                                    game.particles:createBloodSplat(chainTarget.x, chainTarget.y)
+                                    
+                                    -- Play enemy hit sound
+                                    if game.soundManager then
+                                        game.soundManager:playEnemyHit(chainTarget.x, chainTarget.y)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
                     -- Enemy died from this shot
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)

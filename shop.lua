@@ -138,6 +138,13 @@ Shop.UPGRADE_COSTS = {
         description = "Damage enemies when dashing toward them",
         maxLevel = 3,
         effect = "dash_damage"
+    },
+    CHAIN_LIGHTNING = {
+        cost = 800,
+        name = "Chain Lightning",
+        description = "Railgun shots chain electricity to nearby enemies",
+        maxLevel = 3,
+        effect = "chain_lightning"
     }
 }
 

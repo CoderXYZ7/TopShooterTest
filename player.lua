@@ -57,7 +57,8 @@ function Player:new()
             max_health = 0,
             dash_cooldown = 0,
             ammo_capacity = 0,
-            dash_damage = 0
+            dash_damage = 0,
+            chain_lightning = 0
         }
     }
     setmetatable(player, { __index = self })
@@ -601,29 +602,37 @@ function Player:canUpgrade(upgradeType)
     return currentLevel < upgradeData.maxLevel
 end
 
-function Player:purchaseUpgrade(upgradeType)
-    local Shop = require('shop')
-    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
-    if not upgradeData then
-        return false, "Invalid upgrade type"
+    function Player:purchaseUpgrade(upgradeType)
+        local Shop = require('shop')
+        local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+        if not upgradeData then
+            print("DEBUG: Invalid upgrade type: " .. tostring(upgradeType))
+            return false, "Invalid upgrade type"
+        end
+        
+        local currentLevel = self:getUpgradeLevel(upgradeData.effect)
+        print(string.format("DEBUG: Upgrade %s current level: %d, max level: %d", upgradeType, currentLevel, upgradeData.maxLevel))
+        
+        if currentLevel >= upgradeData.maxLevel then
+            print("DEBUG: Max level reached for upgrade: " .. upgradeType)
+            return false, "Max level reached"
+        end
+        
+        local cost = upgradeData.cost
+        print(string.format("DEBUG: Upgrade cost: %d, player money: %d", cost, self.money))
+        
+        if not self:spendMoney(cost) then
+            print("DEBUG: Not enough money for upgrade: " .. upgradeType)
+            return false, "Not enough money"
+        end
+        
+        -- Apply the upgrade
+        self.upgrades[upgradeData.effect] = currentLevel + 1
+        print(string.format("DEBUG: Applied upgrade %s, new level: %d", upgradeData.effect, self.upgrades[upgradeData.effect]))
+        self:applyUpgradeEffects()
+        
+        return true, "Upgrade purchased: " .. upgradeData.name .. " (Level " .. (currentLevel + 1) .. ")"
     end
-    
-    local currentLevel = self:getUpgradeLevel(upgradeData.effect)
-    if currentLevel >= upgradeData.maxLevel then
-        return false, "Max level reached"
-    end
-    
-    local cost = upgradeData.cost
-    if not self:spendMoney(cost) then
-        return false, "Not enough money"
-    end
-    
-    -- Apply the upgrade
-    self.upgrades[upgradeData.effect] = currentLevel + 1
-    self:applyUpgradeEffects()
-    
-    return true, "Upgrade purchased: " .. upgradeData.name .. " (Level " .. (currentLevel + 1) .. ")"
-end
 
 function Player:applyUpgradeEffects()
     -- Apply damage multiplier

@@ -232,6 +232,53 @@ function Particles:createBulletTracer(startX, startY, angle, distance, color)
     return system.id
 end
 
+function Particles:createChainLightning(startX, startY, endX, endY)
+    local system = {
+        id = self.nextId,
+        x = startX,
+        y = startY,
+        particles = {},
+        lifetime = 0.2,  -- Very short duration for lightning effect
+        age = 0,
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES,  -- Lightning appears at entity level
+        chainEndX = endX,
+        chainEndY = endY
+    }
+
+    -- Create multiple lightning segments for a jagged effect
+    local segments = 5
+    local dx = (endX - startX) / segments
+    local dy = (endY - startY) / segments
+    
+    for i = 1, segments do
+        local segmentStartX = startX + dx * (i - 1)
+        local segmentStartY = startY + dy * (i - 1)
+        local segmentEndX = startX + dx * i
+        local segmentEndY = startY + dy * i
+        
+        -- Add some randomness to make it look like lightning
+        local offsetX = (math.random() - 0.5) * 20
+        local offsetY = (math.random() - 0.5) * 20
+        
+        table.insert(system.particles, {
+            x = segmentStartX,
+            y = segmentStartY,
+            segmentEndX = segmentEndX + offsetX,
+            segmentEndY = segmentEndY + offsetY,
+            size = 2,
+            color = {0.5, 0.8, 1.0},  -- Electric blue color
+            lifetime = system.lifetime,
+            age = 0,
+            isChainLightning = true
+        })
+    end
+
+    self.nextId = self.nextId + 1
+    table.insert(self.systems, system)
+    return system.id
+end
+
 function Particles:update(dt)
     -- Update all particle systems
     for i = #self.systems, 1, -1 do
@@ -243,13 +290,15 @@ function Particles:update(dt)
             local particle = system.particles[j]
             particle.age = particle.age + dt
             
-            -- Update position
-            particle.x = particle.x + particle.vx * dt
-            particle.y = particle.y + particle.vy * dt
-            
-            -- Apply gravity to blood particles
-            if system.particles[j].color[1] > 0.7 and system.particles[j].color[2] < 0.2 then
-                particle.vy = particle.vy + 100 * dt
+            -- Update position (only for particles that have velocity)
+            if particle.vx and particle.vy then
+                particle.x = particle.x + particle.vx * dt
+                particle.y = particle.y + particle.vy * dt
+                
+                -- Apply gravity to blood particles
+                if particle.color[1] > 0.7 and particle.color[2] < 0.2 then
+                    particle.vy = particle.vy + 100 * dt
+                end
             end
             
             -- Remove dead particles
@@ -278,6 +327,13 @@ function Particles:draw()
                 love.graphics.setLineWidth(2)
                 love.graphics.line(system.x, system.y, endX, endY)
                 love.graphics.setLineWidth(1)  -- Reset line width
+            elseif particle.isChainLightning then
+                -- Draw chain lightning segment
+                local alpha = 1 - (particle.age / particle.lifetime)
+                love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
+                love.graphics.setLineWidth(3)
+                love.graphics.line(particle.x, particle.y, particle.segmentEndX, particle.segmentEndY)
+                love.graphics.setLineWidth(1)
             else
                 -- Draw regular particle as circle
                 love.graphics.circle('fill', particle.x, particle.y, particle.size)

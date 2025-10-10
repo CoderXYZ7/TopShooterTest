@@ -279,11 +279,126 @@ function Particles:createChainLightning(startX, startY, endX, endY)
     return system.id
 end
 
+function Particles:createFireEffect(x, y, duration)
+    local system = {
+        id = self.nextId,
+        x = x,
+        y = y,
+        particles = {},
+        lifetime = duration or 3.0,  -- Default 3 seconds for burn effect
+        age = 0,
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES,  -- Fire appears at entity level
+        isFireEffect = true,  -- Mark as fire effect for continuous generation
+        emissionTimer = 0,
+        emissionInterval = 0.15,  -- Emit new particles every 0.15 seconds
+        lastEmissionTime = 0
+    }
+
+    -- Create initial fire particles
+    for i = 1, 8 do
+        local angle = math.random() * math.pi * 2
+        local speed = math.random(10, 30)
+        local size = math.random(2, 5)
+        local colorChoice = math.random()
+        local color = colorChoice > 0.7 and {1.0, 0.3, 0.1} or  -- Deep orange
+                      colorChoice > 0.4 and {1.0, 0.6, 0.1} or  -- Orange
+                      {1.0, 0.9, 0.3}  -- Yellow
+        
+        table.insert(system.particles, {
+            x = x + (math.random() - 0.5) * 20,
+            y = y + (math.random() - 0.5) * 20,
+            vx = math.cos(angle) * speed,
+            vy = math.sin(angle) * speed,
+            size = size,
+            color = color,
+            lifetime = math.random(0.5, 1.5),
+            age = 0
+        })
+    end
+
+    self.nextId = self.nextId + 1
+    table.insert(self.systems, system)
+    return system.id
+end
+
+function Particles:createFireImpact(x, y)
+    local system = {
+        id = self.nextId,
+        x = x,
+        y = y,
+        particles = {},
+        lifetime = 0.8,
+        age = 0,
+        active = true,
+        layer = self.LAYERS.ACROSS_ENTITIES  -- Fire impact appears at entity level
+    }
+    
+    -- Create fire impact particles
+    for i = 1, 12 do
+        local angle = math.random() * math.pi * 2
+        local speed = math.random(40, 120)
+        local size = math.random(3, 7)
+        local colorChoice = math.random()
+        local color = colorChoice > 0.7 and {1.0, 0.3, 0.1} or  -- Deep orange
+                      colorChoice > 0.4 and {1.0, 0.6, 0.1} or  -- Orange
+                      {1.0, 0.9, 0.3}  -- Yellow
+        
+        table.insert(system.particles, {
+            x = x,
+            y = y,
+            vx = math.cos(angle) * speed,
+            vy = math.sin(angle) * speed,
+            size = size,
+            color = color,
+            lifetime = math.random(0.3, 0.8),
+            age = 0
+        })
+    end
+    
+    self.nextId = self.nextId + 1
+    table.insert(self.systems, system)
+    return system.id
+end
+
 function Particles:update(dt)
     -- Update all particle systems
     for i = #self.systems, 1, -1 do
         local system = self.systems[i]
         system.age = system.age + dt
+        
+        -- Handle continuous emission for fire effects
+        if system.isFireEffect then
+            system.emissionTimer = system.emissionTimer + dt
+            system.lastEmissionTime = system.lastEmissionTime + dt
+            
+            -- Emit new particles at regular intervals
+            if system.lastEmissionTime >= system.emissionInterval then
+                system.lastEmissionTime = 0
+                
+                -- Emit 2-3 new fire particles
+                for i = 1, math.random(2, 3) do
+                    local angle = math.random() * math.pi * 2
+                    local speed = math.random(10, 30)
+                    local size = math.random(2, 5)
+                    local colorChoice = math.random()
+                    local color = colorChoice > 0.7 and {1.0, 0.3, 0.1} or  -- Deep orange
+                                  colorChoice > 0.4 and {1.0, 0.6, 0.1} or  -- Orange
+                                  {1.0, 0.9, 0.3}  -- Yellow
+                    
+                    table.insert(system.particles, {
+                        x = system.x + (math.random() - 0.5) * 20,
+                        y = system.y + (math.random() - 0.5) * 20,
+                        vx = math.cos(angle) * speed,
+                        vy = math.sin(angle) * speed,
+                        size = size,
+                        color = color,
+                        lifetime = math.random(0.5, 1.5),
+                        age = 0
+                    })
+                end
+            end
+        end
         
         -- Update particles in this system
         for j = #system.particles, 1, -1 do
@@ -410,6 +525,17 @@ function Particles:drawAboveEntities()
         end
     end
     love.graphics.setColor(1, 1, 1, 1)
+end
+
+function Particles:updateSystemPosition(systemId, newX, newY)
+    for _, system in ipairs(self.systems) do
+        if system.id == systemId then
+            system.x = newX
+            system.y = newY
+            return true
+        end
+    end
+    return false
 end
 
 function Particles:clear()

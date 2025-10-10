@@ -110,7 +110,17 @@ function Enemy:new(x, y, enemyType)
         
         -- Smooth rotation
         targetAngle = 0,
-        rotationSpeed = 8  -- Radians per second for rotation interpolation
+        rotationSpeed = 8,  -- Radians per second for rotation interpolation
+        
+        -- Burn damage system
+        isBurning = false,
+        burnDamage = 0,
+        burnDuration = 0,
+        burnTimer = 0,
+        burnTickInterval = 1.0,  -- Damage every second
+        burnTickTimer = 0,
+        burnParticleId = nil,
+        burnSpreadRange = 80  -- Range for spreading burn to nearby enemies
     }
     setmetatable(enemy, { __index = self })
     return enemy
@@ -231,6 +241,33 @@ function Enemy:update(dt, player, pathfinding)
         self.angle = self.targetAngle
     else
         self.angle = self.angle + math.min(maxRotation, math.max(-maxRotation, angleDiff))
+    end
+    
+    -- Update burn damage if enemy is burning
+    if self.isBurning then
+        self.burnTimer = self.burnTimer + dt
+        self.burnTickTimer = self.burnTickTimer + dt
+        
+        -- Update fire particle position to follow enemy movement
+        if self.burnParticleId and particles then
+            local ex, ey = self:getCenter()
+            particles:updateSystemPosition(self.burnParticleId, ex, ey)
+        end
+        
+        -- Apply burn damage every tick interval
+        if self.burnTickTimer >= self.burnTickInterval then
+            self.burnTickTimer = 0
+            if self:takeDamage(self.burnDamage) then
+                -- Enemy died from burn damage
+                return false
+            end
+        end
+        
+        -- Check if burn duration has ended
+        if self.burnTimer >= self.burnDuration then
+            self.isBurning = false
+            self.burnParticleId = nil
+        end
     end
     
     return false
@@ -356,6 +393,63 @@ end
 
 function Enemy:isAlive()
     return self.health > 0
+end
+
+-- Set enemy on fire with dragon breath effect
+function Enemy:setOnFire(damagePerTick, duration, particles, spreadEnabled)
+    self.isBurning = true
+    self.burnDamage = damagePerTick
+    self.burnDuration = duration
+    self.burnTimer = 0
+    self.burnTickTimer = 0
+    self.burnSpreadEnabled = spreadEnabled or false
+    
+    -- Create fire particle effect
+    if particles then
+        local ex, ey = self:getCenter()
+        self.burnParticleId = particles:createFireEffect(ex, ey, duration)
+    end
+    
+    print(string.format("Enemy set on fire: %d damage per tick for %.1f seconds", damagePerTick, duration))
+end
+
+-- Spread burn to nearby enemies
+function Enemy:spreadBurn(enemies, particles, player)
+    if not self.isBurning or not self.burnSpreadEnabled then
+        return
+    end
+    
+    local ex, ey = self:getCenter()
+    local spreadCount = 0
+    
+    for _, otherEnemy in ipairs(enemies) do
+        if otherEnemy ~= self and not otherEnemy.isBurning then
+            local ox, oy = otherEnemy:getCenter()
+            local dx = ox - ex
+            local dy = oy - ey
+            local dist = math.sqrt(dx*dx + dy*dy)
+            
+            if dist <= self.burnSpreadRange then
+                -- Calculate spread damage (reduced from original)
+                local spreadDamage = math.floor(self.burnDamage * 0.6)  -- 60% of original burn damage
+                local spreadDuration = self.burnDuration * 0.8  -- 80% of original duration
+                
+                otherEnemy:setOnFire(spreadDamage, spreadDuration, particles, true)
+                spreadCount = spreadCount + 1
+                
+                -- Create fire impact effect when spreading
+                if particles then
+                    particles:createFireImpact(ox, oy)
+                end
+                
+                print(string.format("Burn spread from enemy to nearby enemy (distance: %.1f)", dist))
+            end
+        end
+    end
+    
+    if spreadCount > 0 then
+        print(string.format("Burn spread to %d enemies", spreadCount))
+    end
 end
 
 -- Utility function to get random enemy type with weighted probabilities

@@ -145,6 +145,13 @@ Shop.UPGRADE_COSTS = {
         description = "Railgun shots chain electricity to nearby enemies",
         maxLevel = 3,
         effect = "chain_lightning"
+    },
+    DRAGON_BREATH = {
+        cost = 700,
+        name = "Dragon Breath Ammo",
+        description = "Shotgun pellets set enemies on fire, dealing damage over time",
+        maxLevel = 3,
+        effect = "dragon_breath"
     }
 }
 

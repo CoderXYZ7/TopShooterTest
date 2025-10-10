@@ -58,7 +58,8 @@ function Player:new()
             dash_cooldown = 0,
             ammo_capacity = 0,
             dash_damage = 0,
-            chain_lightning = 0
+            chain_lightning = 0,
+            dragon_breath = 0
         }
     }
     setmetatable(player, { __index = self })

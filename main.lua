@@ -355,6 +355,22 @@ function love.update(dt)
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)
                     
+                    -- Apply dragon breath burn effect if upgrade is active and weapon is shotgun
+                    local dragonBreathLevel = game.player:getUpgradeLevel("dragon_breath")
+                    if dragonBreathLevel > 0 and weapon.type == "SHOTGUN" then
+                        print(string.format("DEBUG: Dragon Breath level %d active, setting enemy on fire", dragonBreathLevel))
+                        
+                        -- Calculate burn damage based on level (10%, 15%, 20% of pellet damage per second)
+                        local burnDamagePerTick = math.floor(finalDamage * (0.1 + dragonBreathLevel * 0.05))
+                        local burnDuration = 3 + dragonBreathLevel  -- 3, 4, 5 seconds
+                        local spreadEnabled = dragonBreathLevel >= 2  -- Burn spreads at level 2 and 3
+                        
+                        enemy:setOnFire(burnDamagePerTick, burnDuration, game.particles, spreadEnabled)
+                        
+                        -- Create fire impact effect
+                        game.particles:createFireImpact(ex, ey)
+                    end
+                    
                     -- Play enemy hit sound
                     if game.soundManager then
                         game.soundManager:playEnemyHit(ex, ey)

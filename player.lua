@@ -39,6 +39,7 @@ function Player:new()
         chargeStartTime = 0,
         chargeTime = 0,
         maxChargeTime = 3.0,  -- Maximum charge time in seconds
+        chargeShaderActive = false,
         -- Ammo inventory
         ammoInventory = {
             [Weapons.AMMO_TYPES.AMMO_9MM] = 60,  -- Start with 60 9mm rounds

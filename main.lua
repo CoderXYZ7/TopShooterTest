@@ -130,6 +130,14 @@ function love.update(dt)
         -- Update player and check if they shot (returns playerShot, chargeTime for railgun)
         local playerShot, chargeTime = game.player:update(dt, game.assets)
         
+        -- Handle railgun charge shader
+        if game.player:isChargingRailgun() then
+            local chargeProgress = game.player:getChargeProgress()
+            game.shaders:activateShader("railgun_charge", 0, chargeProgress)  -- 0 duration = continuous
+        else
+            game.shaders:deactivateShader("railgun_charge")
+        end
+        
         -- Update enemies and handle attacks
         for i = #game.enemies, 1, -1 do
             local enemy = game.enemies[i]

@@ -127,6 +127,19 @@ function Shaders:endCapture()
                 shader:send("progress", shaderInstance.elapsed / shaderInstance.duration)
             end
             
+            -- Set player position uniform for railgun charge shader
+            if shader:hasUniform("playerPos") then
+                -- Get player position from global game state
+                if love.gameState and love.gameState.player then
+                    local playerX, playerY = love.gameState.player:getCenter()
+                    local ww, wh = love.graphics.getDimensions()
+                    -- Convert world coordinates to screen coordinates
+                    local screenX = ww/2 - love.gameState.player.x - love.gameState.player.width/2 + playerX
+                    local screenY = wh/2 - love.gameState.player.y - love.gameState.player.height/2 + playerY
+                    shader:send("playerPos", {screenX, screenY})
+                end
+            end
+            
             love.graphics.setShader(shader)
             love.graphics.draw(currentCanvas, 0, 0)
             love.graphics.setShader()
@@ -156,84 +169,128 @@ function Shaders:getActiveShaders()
     return names
 end
 
--- Initialize default shaders
-function Shaders:initializeDefaultShaders(debugMode)
-    -- Test shaders (only in debug mode)
-    if debugMode then
-        -- Test shader 1: Red tint (activated with 'k')
-        local redTintShader = [[
-            extern number time;
+    -- Initialize default shaders
+    function Shaders:initializeDefaultShaders(debugMode)
+        -- Test shaders (only in debug mode)
+        if debugMode then
+            -- Test shader 1: Red tint (activated with 'k')
+            local redTintShader = [[
+                extern number time;
+                
+                vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+                    vec4 pixel = Texel(texture, texture_coords);
+                    float pulse = sin(time * 5.0) * 0.3 + 0.7;
+                    pixel.r *= pulse;
+                    pixel.g *= 0.5;
+                    pixel.b *= 0.5;
+                    return pixel;
+                }
+            ]]
             
-            vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
-                vec4 pixel = Texel(texture, texture_coords);
-                float pulse = sin(time * 5.0) * 0.3 + 0.7;
-                pixel.r *= pulse;
-                pixel.g *= 0.5;
-                pixel.b *= 0.5;
-                return pixel;
-            }
-        ]]
+            -- Test shader 2: Blue wave (activated with 't')
+            local blueWaveShader = [[
+                extern number time;
+                extern number progress;
+                
+                vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+                    vec4 pixel = Texel(texture, texture_coords);
+                    
+                    // Create wave effect based on progress
+                    float wave = sin(screen_coords.y * 0.05 + time * 10.0) * 0.1 * progress;
+                    float wave2 = cos(screen_coords.x * 0.03 + time * 8.0) * 0.05 * progress;
+                    
+                    // Apply blue tint that fades with progress
+                    float blueIntensity = 1.0 - progress * 0.5;
+                    pixel.b += (wave + wave2) * blueIntensity;
+                    pixel.r *= (1.0 - progress * 0.3);
+                    pixel.g *= (1.0 - progress * 0.3);
+                    
+                    return pixel;
+                }
+            ]]
+            
+            -- Register the debug shaders
+            self:registerShader("red_tint", redTintShader)
+            self:registerShader("blue_wave", blueWaveShader)
+            
+            print("Initialized debug shaders: red_tint, blue_wave")
+        end
         
-        -- Test shader 2: Blue wave (activated with 't')
-        local blueWaveShader = [[
+        -- Screen shake shader (always available)
+        local screenShakeShader = [[
             extern number time;
+            extern number intensity;
             extern number progress;
-            
+
+            vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+                // Calculate shake amount based on intensity and progress
+                float shakeIntensity = intensity * 5 * (1.0 - progress);
+                
+                // Create random-ish shake using sine waves with different frequencies
+                float shakeX = sin(time * 30.0) * shakeIntensity;
+                float shakeY = cos(time * 25.0) * shakeIntensity;
+                
+                // Apply the shake to screen coordinates (in pixels)
+                vec2 shakenCoords = screen_coords + vec2(shakeX, shakeY);
+                
+                // Convert back to texture coordinates
+                vec2 shakenTexCoords = shakenCoords / love_ScreenSize.xy;
+                
+                // Clamp to avoid sampling outside texture
+                shakenTexCoords = clamp(shakenTexCoords, 0.0, 1.0);
+                
+                return Texel(texture, shakenTexCoords);
+            }
+        ]]
+        
+        -- Railgun charge aura shader
+        local railgunChargeShader = [[
+            extern number time;
+            extern number intensity;
+            extern vec2 playerPos;
+
             vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
                 vec4 pixel = Texel(texture, texture_coords);
+                vec2 worldCoords = screen_coords;
+                float dist = distance(worldCoords, playerPos);
                 
-                // Create wave effect based on progress
-                float wave = sin(screen_coords.y * 0.05 + time * 10.0) * 0.1 * progress;
-                float wave2 = cos(screen_coords.x * 0.03 + time * 8.0) * 0.05 * progress;
+                // Aura radius grows with intensity
+                float baseRadius = 60.0;
+                float auraRadius = baseRadius * (1.0 + intensity * 2.5);
                 
-                // Apply blue tint that fades with progress
-                float blueIntensity = 1.0 - progress * 0.5;
-                pixel.b += (wave + wave2) * blueIntensity;
-                pixel.r *= (1.0 - progress * 0.3);
-                pixel.g *= (1.0 - progress * 0.3);
+                if (dist < auraRadius) {
+                    float falloff = 1.0 - (dist / auraRadius);
+                    falloff = pow(falloff, 2.2);
+                    
+                    // Base bluish-white color
+                    vec3 auraColor = mix(vec3(0.6, 0.8, 1.0), vec3(1.0, 1.0, 1.0), intensity);
+                    
+                    // Irregular shimmer
+                    float noise = sin(dist * 0.15 + time * 6.0) * 0.5 + cos(dist * 0.08 + time * 3.0) * 0.5;
+                    noise *= 0.3 + intensity * 0.7;
+                    
+                    // Blink effect when fully charged
+                    float blink = 1.0;
+                    if (intensity >= 0.99) {
+                        blink = step(0.5, sin(time * 15.0) * 0.5 + 0.5); // Hard blink
+                    }
+                    
+                    // Combine effects
+                    float auraStrength = falloff * (0.7 + noise * 0.3) * blink;
+                    pixel.rgb += auraColor * auraStrength;
+                }
                 
                 return pixel;
             }
         ]]
-        
-        -- Register the debug shaders
-        self:registerShader("red_tint", redTintShader)
-        self:registerShader("blue_wave", blueWaveShader)
-        
-        print("Initialized debug shaders: red_tint, blue_wave")
-    end
-    
-    -- Screen shake shader (always available)
-    local screenShakeShader = [[
-        extern number time;
-        extern number intensity;
-        extern number progress;
 
-        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
-            // Calculate shake amount based on intensity and progress
-            float shakeIntensity = intensity * 5 * (1.0 - progress);
-            
-            // Create random-ish shake using sine waves with different frequencies
-            float shakeX = sin(time * 30.0) * shakeIntensity;
-            float shakeY = cos(time * 25.0) * shakeIntensity;
-            
-            // Apply the shake to screen coordinates (in pixels)
-            vec2 shakenCoords = screen_coords + vec2(shakeX, shakeY);
-            
-            // Convert back to texture coordinates
-            vec2 shakenTexCoords = shakenCoords / love_ScreenSize.xy;
-            
-            // Clamp to avoid sampling outside texture
-            shakenTexCoords = clamp(shakenTexCoords, 0.0, 1.0);
-            
-            return Texel(texture, shakenTexCoords);
-        }
-    ]]
-    
-    -- Register the screen shake shader
-    self:registerShader("screen_shake", screenShakeShader)
-    
-    print("Initialized screen shake shader")
-end
+        
+        -- Register the shaders
+        self:registerShader("screen_shake", screenShakeShader)
+        self:registerShader("railgun_charge", railgunChargeShader)
+        
+        print("Initialized screen shake shader")
+        print("Initialized railgun charge shader")
+    end
 
 return Shaders

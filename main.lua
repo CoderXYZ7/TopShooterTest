@@ -242,7 +242,9 @@ function love.update(dt)
                         local maxChargeTime = weaponConfig.specificVars.maxChargeTime or 3.0
                         
                         local chargeProgress = math.min(chargeTime / maxChargeTime, 1.0)
-                        local damageMultiplier = minMultiplier + (maxMultiplier - minMultiplier) * chargeProgress
+                        -- Use exponential scaling: chargeProgress^2.5 so early milliseconds have less impact
+                        local exponentialProgress = chargeProgress ^ 2.5
+                        local damageMultiplier = minMultiplier + (maxMultiplier - minMultiplier) * exponentialProgress
                         finalDamage = math.floor(baseDamage * damageMultiplier)
                         
                         print(string.format("Railgun fired: Charge time %.2fs, Damage multiplier: %.2fx, Final damage: %d", 

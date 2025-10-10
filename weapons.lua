@@ -100,8 +100,8 @@ Weapons.TYPES = {
         collateralFalloff = 1.0,  -- Full damage per pellet
         screenShakeIntensity = 0.4,
         specificVars = {   -- Weapon-specific variables
-            pelletSpread = math.pi/16,  -- Total spread angle in radians (30-degree cone, 60-degree total)
-            pellets = 8,  -- Number of pellets per shot
+            pelletSpread = math.pi/20,  -- Total spread angle in radians (30-degree cone, 60-degree total)
+            pellets = 10,  -- Number of pellets per shot
             incrementalReload = true  -- Enables bullet-by-bullet loading animation
         }
     }

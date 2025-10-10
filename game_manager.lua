@@ -5,7 +5,7 @@ local Drops = require('drops')
 
 function GameManager:new()
     local manager = {
-        currentState = "PLAYING",  -- PLAYING, GAME_OVER, VICTORY, PAUSED, SHOP
+        currentState = "START_MENU",  -- START_MENU, PLAYING, GAME_OVER, VICTORY, PAUSED, SHOP, SETTINGS
         wave = 1,
         enemiesPerWave = 5,
         enemiesSpawnedThisWave = 0,
@@ -22,7 +22,15 @@ function GameManager:new()
         shopOpen = false,
         shopTimer = 0,
         shopDuration = 30,  -- 30 seconds to shop between waves
-        drops = Drops:new()  -- Drops and pickups management
+        drops = Drops:new(),  -- Drops and pickups management
+        -- Menu states
+        menuSelection = 1,
+        settingsSelection = 1,
+        -- Settings
+        musicVolume = 0.5,
+        soundVolume = 0.7,
+        showTutorial = true,
+        debugMode = false
     }
     setmetatable(manager, { __index = self })
     return manager

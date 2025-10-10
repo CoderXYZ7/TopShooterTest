@@ -32,80 +32,83 @@ function UI:new()
 end
 
 function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierWalkingImages, gameManager)
-    -- Draw main UI panel - much smaller and cleaner
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle('fill', 0, 0, 250, 80)
-    love.graphics.setColor(1, 1, 1)
-    
-    -- Health bar (top left)
-    local healthPercent = player.health / player.maxHealth
-    love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
-    love.graphics.rectangle('fill', 10, 10, 120, 15)
-    love.graphics.setColor(1 - healthPercent, healthPercent, 0, 1)
-    love.graphics.rectangle('fill', 10, 10, 120 * healthPercent, 15)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.print(math.ceil(player.health) .. "/" .. player.maxHealth, 15, 12)
-    
-    -- Consolidated weapon info (top right)
-    local currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType = player:getWeaponInfo()
-    love.graphics.print(weaponName .. ": " .. currentAmmo .. "/" .. inventoryAmmo, 140, 12)
-    
-    -- Game stats (bottom row)
-    love.graphics.print("Wave: " .. self.wave, 10, 35)
-    love.graphics.print("$" .. player:getMoney(), 80, 35)
-    love.graphics.print("Score: " .. self.score, 140, 35)
-    
-    -- Enemies remaining and time (second bottom row)
-    love.graphics.print("Enemies: " .. self.enemiesRemaining, 10, 50)
-    local minutes = math.floor(self.timeSurvived / 60)
-    local seconds = math.floor(self.timeSurvived % 60)
-    love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 140, 50)
-    
-    -- Dash cooldown indicator (small and clean)
-    if player.dashCooldown > 0 then
-        love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
-        love.graphics.rectangle('fill', 10, 65, 60, 10)
-        love.graphics.setColor(1, 0.5, 0, 1)
-        love.graphics.rectangle('fill', 10, 65, 60 * (1 - player.dashCooldown/1.5), 10)
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("DASH", 15, 66)
-    else
-        love.graphics.setColor(0.2, 0.8, 0.2, 1)
-        love.graphics.print("DASH", 15, 66)
-        love.graphics.setColor(1, 1, 1)
-    end
-    
-    -- Reload indicator (when reloading)
-    if player:isReloading() then
-        local reloadPercent = player:getReloadProgress()
-        love.graphics.setColor(1, 0.8, 0, 0.8)
-        love.graphics.rectangle('fill', 80, 65, 60 * reloadPercent, 10)
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("RELOAD", 85, 66)
-    end
-    
-    -- Draw inventory slots
-    self:drawInventory(player)
-    
-    -- Debug information (moved to bottom right to avoid clutter)
-    if debug then
-        local walkingFrame = math.floor(walkingFrameTime / walkingFrameDuration) % #soldierWalkingImages + 1
-        love.graphics.print("FPS: " .. love.timer.getFPS(), love.graphics.getWidth() - 100, 10)
-        love.graphics.print("Frame: " .. walkingFrame, love.graphics.getWidth() - 100, 25)
-        love.graphics.print("Pos: " .. math.floor(player.x) .. "," .. math.floor(player.y), love.graphics.getWidth() - 100, 40)
-    end
-    
-    -- Tutorial messages (simplified and less intrusive)
-    if self.showTutorial and self.tutorialTime < 10 then
-        self.tutorialTime = self.tutorialTime + love.timer.getDelta()
-        love.graphics.setColor(1, 1, 1, 0.8)
-        love.graphics.print("WASD: Move | Mouse: Aim/Shoot | R: Reload | SPACE: Dash", 400, 10)
+    -- Only draw game UI when playing
+    if gameManager:getState() == "PLAYING" then
+        -- Draw main UI panel - much smaller and cleaner
+        love.graphics.setColor(0, 0, 0, 0.7)
+        love.graphics.rectangle('fill', 0, 0, 250, 80)
         love.graphics.setColor(1, 1, 1)
         
-        if self.tutorialTime > 5 then
-            love.graphics.setColor(1, 1, 1, 0.6)
-            love.graphics.print("Survive as long as possible!", 400, 30)
+        -- Health bar (top left)
+        local healthPercent = player.health / player.maxHealth
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+        love.graphics.rectangle('fill', 10, 10, 120, 15)
+        love.graphics.setColor(1 - healthPercent, healthPercent, 0, 1)
+        love.graphics.rectangle('fill', 10, 10, 120 * healthPercent, 15)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(math.ceil(player.health) .. "/" .. player.maxHealth, 15, 12)
+        
+        -- Consolidated weapon info (top right)
+        local currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType = player:getWeaponInfo()
+        love.graphics.print(weaponName .. ": " .. currentAmmo .. "/" .. inventoryAmmo, 140, 12)
+        
+        -- Game stats (bottom row)
+        love.graphics.print("Wave: " .. self.wave, 10, 35)
+        love.graphics.print("$" .. player:getMoney(), 80, 35)
+        love.graphics.print("Score: " .. self.score, 140, 35)
+        
+        -- Enemies remaining and time (second bottom row)
+        love.graphics.print("Enemies: " .. self.enemiesRemaining, 10, 50)
+        local minutes = math.floor(self.timeSurvived / 60)
+        local seconds = math.floor(self.timeSurvived % 60)
+        love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 140, 50)
+        
+        -- Dash cooldown indicator (small and clean)
+        if player.dashCooldown > 0 then
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+            love.graphics.rectangle('fill', 10, 65, 60, 10)
+            love.graphics.setColor(1, 0.5, 0, 1)
+            love.graphics.rectangle('fill', 10, 65, 60 * (1 - player.dashCooldown/1.5), 10)
             love.graphics.setColor(1, 1, 1)
+            love.graphics.print("DASH", 15, 66)
+        else
+            love.graphics.setColor(0.2, 0.8, 0.2, 1)
+            love.graphics.print("DASH", 15, 66)
+            love.graphics.setColor(1, 1, 1)
+        end
+        
+        -- Reload indicator (when reloading)
+        if player:isReloading() then
+            local reloadPercent = player:getReloadProgress()
+            love.graphics.setColor(1, 0.8, 0, 0.8)
+            love.graphics.rectangle('fill', 80, 65, 60 * reloadPercent, 10)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("RELOAD", 85, 66)
+        end
+        
+        -- Draw inventory slots
+        self:drawInventory(player)
+        
+        -- Debug information (moved to bottom right to avoid clutter)
+        if debug then
+            local walkingFrame = math.floor(walkingFrameTime / walkingFrameDuration) % #soldierWalkingImages + 1
+            love.graphics.print("FPS: " .. love.timer.getFPS(), love.graphics.getWidth() - 100, 10)
+            love.graphics.print("Frame: " .. walkingFrame, love.graphics.getWidth() - 100, 25)
+            love.graphics.print("Pos: " .. math.floor(player.x) .. "," .. math.floor(player.y), love.graphics.getWidth() - 100, 40)
+        end
+        
+        -- Tutorial messages (simplified and less intrusive)
+        if self.showTutorial and self.tutorialTime < 10 then
+            self.tutorialTime = self.tutorialTime + love.timer.getDelta()
+            love.graphics.setColor(1, 1, 1, 0.8)
+            love.graphics.print("WASD: Move | Mouse: Aim/Shoot | R: Reload | SPACE: Dash", 400, 10)
+            love.graphics.setColor(1, 1, 1)
+            
+            if self.tutorialTime > 5 then
+                love.graphics.setColor(1, 1, 1, 0.6)
+                love.graphics.print("Survive as long as possible!", 400, 30)
+                love.graphics.setColor(1, 1, 1)
+            end
         end
     end
     
@@ -618,6 +621,138 @@ function UI:handleLoadoutInput(key, player)
     end
     
     return false
+end
+
+-- Menu system methods
+function UI:drawStartMenu(gameManager)
+    local ww, wh = love.graphics.getDimensions()
+    
+    -- Draw background
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle('fill', 0, 0, ww, wh)
+    
+    -- Draw title
+    love.graphics.setColor(0.8, 0.2, 0.2, 1)
+    love.graphics.print("TOP SHOOTER", ww/2 - 150, wh/2 - 150, 0, 3, 3)
+    
+    -- Draw menu options
+    local options = {"Start Game", "Settings", "Quit"}
+    local optionY = wh/2 - 50
+    
+    for i, option in ipairs(options) do
+        if i == gameManager.menuSelection then
+            love.graphics.setColor(0.2, 0.6, 1, 1)  -- Highlight selected
+        else
+            love.graphics.setColor(1, 1, 1, 0.8)
+        end
+        
+        love.graphics.print(option, ww/2 - 50, optionY + (i-1)*40, 0, 1.5, 1.5)
+    end
+    
+    -- Draw instructions
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("Use ARROW KEYS to navigate, ENTER to select", ww/2 - 180, wh - 100)
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function UI:drawPauseMenu(gameManager)
+    local ww, wh = love.graphics.getDimensions()
+    
+    -- Draw semi-transparent overlay
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle('fill', 0, 0, ww, wh)
+    
+    -- Draw title
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("PAUSED", ww/2 - 80, wh/2 - 150, 0, 3, 3)
+    
+    -- Draw menu options
+    local options = {"Resume", "Settings", "Main Menu"}
+    local optionY = wh/2 - 50
+    
+    for i, option in ipairs(options) do
+        if i == gameManager.menuSelection then
+            love.graphics.setColor(0.2, 0.6, 1, 1)  -- Highlight selected
+        else
+            love.graphics.setColor(1, 1, 1, 0.8)
+        end
+        
+        love.graphics.print(option, ww/2 - 50, optionY + (i-1)*40, 0, 1.5, 1.5)
+    end
+    
+    -- Draw instructions
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("Press ESC to resume", ww/2 - 80, wh - 100)
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function UI:drawSettingsMenu(gameManager)
+    local ww, wh = love.graphics.getDimensions()
+    
+    -- Draw background
+    love.graphics.setColor(0, 0, 0, 0.9)
+    love.graphics.rectangle('fill', 0, 0, ww, wh)
+    
+    -- Draw title
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("SETTINGS", ww/2 - 80, 100, 0, 2, 2)
+    
+    -- Draw settings options
+    local settings = {
+        {name = "Music Volume", value = gameManager.musicVolume, type = "slider"},
+        {name = "Sound Volume", value = gameManager.soundVolume, type = "slider"},
+        {name = "Show Tutorial", value = gameManager.showTutorial, type = "toggle"},
+        {name = "Debug Mode", value = gameManager.debugMode, type = "toggle"},
+        {name = "Back", value = nil, type = "back"}
+    }
+    
+    local optionY = 200
+    
+    for i, setting in ipairs(settings) do
+        -- Highlight selected option
+        if i == gameManager.settingsSelection then
+            love.graphics.setColor(0.2, 0.6, 1, 1)
+        else
+            love.graphics.setColor(1, 1, 1, 0.8)
+        end
+        
+        -- Draw setting name
+        love.graphics.print(setting.name, 200, optionY + (i-1)*50)
+        
+        -- Draw setting value based on type
+        if setting.type == "slider" then
+            -- Draw slider background
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.8)
+            love.graphics.rectangle('fill', 400, optionY + (i-1)*50 + 5, 200, 20)
+            
+            -- Draw slider fill
+            love.graphics.setColor(0.2, 0.8, 0.2, 0.8)
+            love.graphics.rectangle('fill', 400, optionY + (i-1)*50 + 5, 200 * setting.value, 20)
+            
+            -- Draw slider text
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.print(string.format("%d%%", math.floor(setting.value * 100)), 610, optionY + (i-1)*50)
+            
+        elseif setting.type == "toggle" then
+            if setting.value then
+                love.graphics.setColor(0.2, 0.8, 0.2, 1)
+                love.graphics.print("ON", 400, optionY + (i-1)*50)
+            else
+                love.graphics.setColor(0.8, 0.2, 0.2, 1)
+                love.graphics.print("OFF", 400, optionY + (i-1)*50)
+            end
+        elseif setting.type == "back" then
+            love.graphics.print("← Back", 400, optionY + (i-1)*50)
+        end
+        
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+    
+    -- Draw instructions
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("ARROW KEYS: Navigate | LEFT/RIGHT: Adjust | ENTER: Toggle | ESC: Back", 
+                       ww/2 - 250, wh - 100)
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 return UI

@@ -33,25 +33,18 @@ function Assets:load()
         table.insert(self.zombieAttackingImages, love.graphics.newImage(frameName))
     end
 
-    -- Load music
-    self.music = love.audio.newSource('assets/music/space-marine-theme.ogg', 'stream')
-    self.music:setLooping(true)
-    love.audio.play(self.music)
-
     -- Load floor tile
     self.floorTile = love.graphics.newImage('assets/textures/floortile192x192.png')
 end
 
+-- Note: Music functionality has been moved to the SoundManager module
+-- These methods are kept for backward compatibility but now do nothing
 function Assets:playMusic()
-    if self.music then
-        love.audio.play(self.music)
-    end
+    -- Music is now handled by the SoundManager
 end
 
 function Assets:stopMusic()
-    if self.music then
-        love.audio.stop(self.music)
-    end
+    -- Music is now handled by the SoundManager
 end
 
 return Assets

@@ -14,6 +14,7 @@ local Shop = require('shop')
 local Map = require('map')
 local Pathfinding = require('pathfinding')
 local Shaders = require('shaders')
+local SoundManager = require('sound')
 
 -- Game state
 local game = {
@@ -49,6 +50,16 @@ function love.load()
     game.map = Map:new()
     game.shaders = Shaders:new()
     game.shaders:initializeDefaultShaders(game.DEBUG)
+    game.soundManager = SoundManager:new()
+    game.soundManager:load()
+    
+    -- Sync sound manager with game manager settings
+    if game.soundManager then
+        game.soundManager:setMusicVolume(game.gameManager.musicVolume)
+        game.soundManager:setSoundVolume(game.gameManager.soundVolume)
+        -- Start playing music
+        game.soundManager:playMusic("space-marine-theme", true)
+    end
 
     -- Load map (fallback to default if loading fails)
     local mapLoaded = false
@@ -166,6 +177,11 @@ function love.update(dt)
             local mx, my = game.player:getMuzzlePosition()
             game.particles:createMuzzleFlash(mx, my, game.player.angle)
             
+            -- Play gunshot sound
+            if game.soundManager then
+                game.soundManager:playGunshot(mx, my)
+            end
+            
             -- Trigger screen shake effect based on weapon type
             local weapon = game.player:getCurrentWeapon()
             local weaponConfig = Weapons.TYPES[weapon.type]
@@ -229,6 +245,11 @@ function love.update(dt)
                     game.particles:createBloodSplat(ex, ey)
                     game.ui:addScore(enemy:getScore())
                     
+                    -- Play enemy death sound
+                    if game.soundManager then
+                        game.soundManager:playEnemyDeath(ex, ey)
+                    end
+                    
                     -- Handle enemy drops (FIXED: Added missing drop logic)
                     local drops = enemy:getDrops()
                     for _, drop in ipairs(drops) do
@@ -241,6 +262,11 @@ function love.update(dt)
                     -- Enemy hit but not killed
                     local ex, ey = enemy:getCenter()
                     game.particles:createBloodSplat(ex, ey)
+                    
+                    -- Play enemy hit sound
+                    if game.soundManager then
+                        game.soundManager:playEnemyHit(ex, ey)
+                    end
                 end
             end
             
@@ -437,6 +463,16 @@ function love.draw()
     -- Draw wave info
     game.gameManager:drawWaveInfo()
     
+    -- Draw menus based on game state
+    local state = game.gameManager:getState()
+    if state == "START_MENU" then
+        game.ui:drawStartMenu(game.gameManager)
+    elseif state == "PAUSED" then
+        game.ui:drawPauseMenu(game.gameManager)
+    elseif state == "SETTINGS" then
+        game.ui:drawSettingsMenu(game.gameManager)
+    end
+    
     -- End capture and apply shaders
     game.shaders:endCapture()
 end
@@ -483,6 +519,125 @@ function love.mousepressed(x, y, button, istouch, presses)
 end
 
 function love.keypressed(key)
+    local state = game.gameManager:getState()
+    
+    -- Handle menu navigation
+    if state == "START_MENU" then
+        if key == 'up' then
+            game.gameManager.menuSelection = math.max(1, game.gameManager.menuSelection - 1)
+        elseif key == 'down' then
+            game.gameManager.menuSelection = math.min(3, game.gameManager.menuSelection + 1)
+        elseif key == 'return' then
+            if game.gameManager.menuSelection == 1 then
+                -- Start Game
+                game.gameManager:setState("PLAYING")
+            elseif game.gameManager.menuSelection == 2 then
+                -- Settings
+                game.gameManager.previousState = "START_MENU"
+                game.gameManager:setState("SETTINGS")
+                game.gameManager.settingsSelection = 1
+            elseif game.gameManager.menuSelection == 3 then
+                -- Quit
+                love.event.quit()
+            end
+        end
+        return
+    elseif state == "PAUSED" then
+        if key == 'up' then
+            game.gameManager.menuSelection = math.max(1, game.gameManager.menuSelection - 1)
+        elseif key == 'down' then
+            game.gameManager.menuSelection = math.min(3, game.gameManager.menuSelection + 1)
+        elseif key == 'return' then
+            if game.gameManager.menuSelection == 1 then
+                -- Resume
+                game.gameManager:setState("PLAYING")
+            elseif game.gameManager.menuSelection == 2 then
+                -- Settings
+                game.gameManager.previousState = "PAUSED"
+                game.gameManager:setState("SETTINGS")
+                game.gameManager.settingsSelection = 1
+            elseif game.gameManager.menuSelection == 3 then
+                -- Main Menu
+                game.gameManager:setState("START_MENU")
+                game.gameManager.menuSelection = 1
+            end
+        elseif key == 'escape' then
+            -- Resume with escape key
+            game.gameManager:setState("PLAYING")
+        end
+        return
+    elseif state == "SETTINGS" then
+        if key == 'up' then
+            game.gameManager.settingsSelection = math.max(1, game.gameManager.settingsSelection - 1)
+        elseif key == 'down' then
+            game.gameManager.settingsSelection = math.min(5, game.gameManager.settingsSelection + 1)
+        elseif key == 'left' then
+            -- Adjust sliders and toggles
+            if game.gameManager.settingsSelection == 1 then
+                game.gameManager.musicVolume = math.max(0, game.gameManager.musicVolume - 0.1)
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 2 then
+                game.gameManager.soundVolume = math.max(0, game.gameManager.soundVolume - 0.1)
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 3 then
+                game.gameManager.showTutorial = not game.gameManager.showTutorial
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 4 then
+                game.gameManager.debugMode = not game.gameManager.debugMode
+                applySettings(game.gameManager)
+            end
+        elseif key == 'right' then
+            -- Adjust sliders and toggles
+            if game.gameManager.settingsSelection == 1 then
+                game.gameManager.musicVolume = math.min(1, game.gameManager.musicVolume + 0.1)
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 2 then
+                game.gameManager.soundVolume = math.min(1, game.gameManager.soundVolume + 0.1)
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 3 then
+                game.gameManager.showTutorial = not game.gameManager.showTutorial
+                applySettings(game.gameManager)
+            elseif game.gameManager.settingsSelection == 4 then
+                game.gameManager.debugMode = not game.gameManager.debugMode
+                applySettings(game.gameManager)
+            end
+        elseif key == 'return' then
+            if game.gameManager.settingsSelection == 5 then
+                -- Back
+                if game.gameManager.previousState then
+                    game.gameManager:setState(game.gameManager.previousState)
+                else
+                    game.gameManager:setState("START_MENU")
+                end
+            else
+                -- Toggle settings
+                if game.gameManager.settingsSelection == 3 then
+                    game.gameManager.showTutorial = not game.gameManager.showTutorial
+                    applySettings(game.gameManager)
+                elseif game.gameManager.settingsSelection == 4 then
+                    game.gameManager.debugMode = not game.gameManager.debugMode
+                    applySettings(game.gameManager)
+                end
+            end
+        elseif key == 'escape' then
+            -- Back with escape key
+            if game.gameManager.previousState then
+                game.gameManager:setState(game.gameManager.previousState)
+            else
+                game.gameManager:setState("START_MENU")
+            end
+        end
+        return
+    end
+    
+    -- Pause game when playing
+    if state == "PLAYING" and key == 'escape' then
+        game.gameManager.previousState = "PLAYING"
+        game.gameManager:setState("PAUSED")
+        game.gameManager.menuSelection = 1
+        return
+    end
+    
     -- Toggle debug mode
     if key == 'f1' then
         game.DEBUG = not game.DEBUG
@@ -751,6 +906,27 @@ function loadMap(mapPath, remember, spawnX, spawnY)
             game.player.y = game.gameManager.playerSpawnPoint.y
         end
     end
+end
+
+function applySettings(gameManager)
+    -- Apply debug mode setting
+    game.DEBUG = gameManager.debugMode
+    
+    -- Apply tutorial setting to UI
+    game.ui.showTutorial = gameManager.showTutorial
+    
+    -- Apply music and sound volume to sound manager
+    if game.soundManager then
+        game.soundManager:setMusicVolume(gameManager.musicVolume)
+        game.soundManager:setSoundVolume(gameManager.soundVolume)
+    end
+    
+    -- Print current settings for debugging
+    print(string.format("Settings applied - Music: %d%%, Sound: %d%%, Tutorial: %s, Debug: %s", 
+          math.floor(gameManager.musicVolume * 100), 
+          math.floor(gameManager.soundVolume * 100),
+          gameManager.showTutorial and "ON" or "OFF",
+          gameManager.debugMode and "ON" or "OFF"))
 end
 
 function restartGame()

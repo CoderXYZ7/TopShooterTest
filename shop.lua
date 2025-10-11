@@ -6,7 +6,8 @@ Shop.ITEM_TYPES = {
     WEAPON = "weapon",
     AMMO = "ammo",
     HEALTH = "health",
-    UPGRADE = "upgrade"
+    UPGRADE = "upgrade",
+    THROWABLE = "throwable"
 }
 
 -- Weapon costs
@@ -155,6 +156,22 @@ Shop.UPGRADE_COSTS = {
     }
 }
 
+-- Throwable costs
+Shop.THROWABLE_COSTS = {
+    GRENADE = {
+        cost = 150,
+        amount = 2,
+        name = "Fragmentation Grenade",
+        description = "Explosive grenade with 3-second fuse"
+    },
+    MOLOTOV = {
+        cost = 100,
+        amount = 1,
+        name = "Molotov Cocktail",
+        description = "Fire grenade that creates burning area"
+    }
+}
+
 -- Shop state
 function Shop:new()
     local shop = {
@@ -292,6 +309,19 @@ function Shop:getAvailableItems()
                 description = data.description,
                 maxLevel = data.maxLevel,
                 effect = data.effect
+            })
+        end
+        return items
+    elseif self.selectedCategory == "THROWABLES" then
+        local items = {}
+        for throwableType, data in pairs(Shop.THROWABLE_COSTS) do
+            table.insert(items, {
+                type = Shop.ITEM_TYPES.THROWABLE,
+                throwableType = throwableType,
+                cost = data.cost,
+                name = data.name,
+                description = data.description,
+                amount = data.amount
             })
         end
         return items

@@ -30,7 +30,11 @@ local game = {
     pathfinding = nil,
     DEBUG = true,
     mapStates = {},  -- Store saved map states
-    currentMapPath = nil
+    currentMapPath = nil,
+    -- Throwable system
+    throwables = {},  -- Active throwable objects
+    fireAreas = {},   -- Persistent fire areas from Molotovs
+    Throwable = require('throwable')
 }
 
 function love.load()
@@ -387,7 +391,56 @@ function love.update(dt)
         
         -- Handle collisions
         game.collision:update(game.player, game.enemies)
-        
+
+        -- Update throwable objects
+        for i = #game.throwables, 1, -1 do
+            local throwable = game.throwables[i]
+            local exploded = false
+            local fireArea = nil
+
+            -- Check if throwable collided with enemy and exploded
+            if throwable:update(dt, game.collision, game.enemies, game.particles) == false then
+                -- Throwable was destroyed (exploded)
+                exploded = true
+            end
+
+            if exploded then
+                -- Check if this throwable creates a fire area
+                if throwable.config.createsFire then
+                    fireArea = throwable:createPersistentFireArea(game.particles, game.enemies)
+                    if fireArea then
+                        table.insert(game.fireAreas, fireArea)
+                    end
+                end
+                table.remove(game.throwables, i)
+            end
+        end
+
+        -- Update fire areas (from Molotov explosions)
+        for i = #game.fireAreas, 1, -1 do
+            local fireArea = game.fireAreas[i]
+            local currentTime = love.timer.getTime()
+
+            -- Check if fire area has expired
+            if currentTime - fireArea.creationTime >= fireArea.duration then
+                table.remove(game.fireAreas, i)
+            else
+                -- Check for enemies entering the fire area
+                for _, enemy in ipairs(game.enemies) do
+                    local ex, ey = enemy:getCenter()
+                    local dx = ex - fireArea.x
+                    local dy = ey - fireArea.y
+                    local distance = math.sqrt(dx * dx + dy * dy)
+
+                    -- If enemy is in fire area and not already burning
+                    if distance <= fireArea.radius and not enemy.isBurning then
+                        -- Set enemy on fire
+                        enemy:setOnFire(fireArea.damagePerSecond, fireArea.fireDuration, game.particles, false)
+                    end
+                end
+            end
+        end
+
         -- Update particles
         game.particles:update(dt)
         
@@ -500,6 +553,23 @@ function love.draw()
 
         -- Draw player
         game.player:draw(game.assets, game.DEBUG)
+
+        -- Draw throwable objects
+        for _, throwable in ipairs(game.throwables) do
+            throwable:draw()
+        end
+
+        -- Draw fire areas
+        for _, fireArea in ipairs(game.fireAreas) do
+            -- Draw semi-transparent fire area circle
+            love.graphics.setColor(fireArea.color)
+            love.graphics.circle('fill', fireArea.x, fireArea.y, fireArea.radius)
+
+            -- Draw fire area border
+            love.graphics.setColor(1.0, 0.3, 0.1, 0.8)
+            love.graphics.circle('line', fireArea.x, fireArea.y, fireArea.radius)
+            love.graphics.setColor(1, 1, 1, 1)
+        end
 
         -- Draw particles that appear across entities (muzzle flash, dash trail)
         game.particles:drawAcrossEntities()
@@ -768,8 +838,35 @@ function love.keypressed(key)
         restartGame()
     end
     
-    -- Shader controls (only when playing and not in shop/loadout)
+    -- Throwable controls (only when playing and not in shop/loadout)
     if game.gameManager:getState() == "PLAYING" and not game.gameManager:isShopOpen() and not game.ui:isLoadoutMode() then
+        -- Throwable selection (Q/E keys)
+        if key == 'q' then
+            game.player:switchThrowable(-1)  -- Previous throwable
+        elseif key == 'e' then
+            game.player:switchThrowable(1)   -- Next throwable
+        elseif key == 'f' then
+            -- Throw current throwable
+            local success, message = game.player:throwThrowable()
+            if success then
+                -- Create throwable object
+                local throwableType = game.player:getCurrentThrowableType()
+                local mx, my = game.player:getMuzzlePosition()
+                local throwable = game.Throwable:new(throwableType, mx, my, game.player.angle, 1.0)
+
+                -- Add to active throwables
+                table.insert(game.throwables, throwable)
+
+                -- Play throw sound (if sound manager exists)
+                if game.soundManager then
+                    game.soundManager:playSound("throw", mx, my)
+                end
+            else
+                -- Show failure message (could be integrated with UI message system)
+                print("Throw failed: " .. message)
+            end
+        end
+
         -- Debug-only test shaders
         if game.DEBUG then
             -- 'k' key: Toggle red tint shader continuously
@@ -780,7 +877,7 @@ function love.keypressed(key)
                     game.shaders:activateShader("red_tint", 0) -- 0 = continuous
                 end
             end
-            
+
             -- 't' key: Activate blue wave shader for 2 seconds
             if key == 't' then
                 game.shaders:activateShader("blue_wave", 2.0)
@@ -826,7 +923,7 @@ function love.keypressed(key)
             end
         elseif key == 'tab' then
             -- Switch shop categories
-            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES", "THROWABLES"}
             local currentIndex = 1
             for i, cat in ipairs(categories) do
                 if shop.selectedCategory == cat then
@@ -840,7 +937,7 @@ function love.keypressed(key)
             game.ui.shopScrollOffset = 0
         elseif key == 'left' then
             -- Switch shop categories (backward)
-            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES", "THROWABLES"}
             local currentIndex = 1
             for i, cat in ipairs(categories) do
                 if shop.selectedCategory == cat then
@@ -854,7 +951,7 @@ function love.keypressed(key)
             game.ui.shopScrollOffset = 0
         elseif key == 'right' then
             -- Switch shop categories (forward)
-            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
+            local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES", "THROWABLES"}
             local currentIndex = 1
             for i, cat in ipairs(categories) do
                 if shop.selectedCategory == cat then
@@ -1048,6 +1145,8 @@ function restartGame()
     end
 
     game.enemies = {}
+    game.throwables = {}  -- Clear throwable objects
+    game.fireAreas = {}   -- Clear fire areas
     game.collision = Collision:new()
     game.shooting = Shooting:new()
     game.ui:reset()

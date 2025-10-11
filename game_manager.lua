@@ -370,6 +370,17 @@ function GameManager:buyItem(player, itemType, itemData)
         else
             return false, "Not enough money"
         end
+    elseif itemType == "throwable" then
+        cost = Shop.THROWABLE_COSTS[itemData.throwableType].cost
+        if player:spendMoney(cost) then
+            success, message = player:addThrowable(itemData.throwableType, itemData.amount)
+            if not success then
+                player:addMoney(cost) -- Refund if throwable couldn't be added
+                return false, message
+            end
+        else
+            return false, "Not enough money"
+        end
     end
 
     return success, success and "Purchase successful" or "Purchase failed"

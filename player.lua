@@ -49,6 +49,33 @@ function Player:new()
         money = 10000,  -- Money for shop
         -- Weapon inventory to preserve weapon states
         weaponInventory = {},
+        -- Throwable inventory system
+        throwableInventory = {
+            selectedThrowable = 1,  -- Currently selected throwable type index
+            throwables = {
+                ["GRENADE"] = {
+                    name = "Fragmentation Grenade",
+                    count = 3,
+                    maxCount = 5,
+                    icon = "grenade_icon",
+                    description = "Explosive grenade with 3-second fuse"
+                },
+                ["MOLOTOV"] = {
+                    name = "Molotov Cocktail",
+                    count = 2,
+                    maxCount = 3,
+                    icon = "molotov_icon",
+                    description = "Fire grenade that creates burning area"
+                }
+            },
+            availableTypes = {"GRENADE", "MOLOTOV"}  -- Available throwable types
+        },
+        -- Throwable state
+        isThrowing = false,
+        throwingTime = 0,
+        throwingDuration = 0.4,  -- Duration of throwing animation
+        lastThrowTime = 0,
+        throwCooldown = 1.0,  -- Minimum time between throws
         -- Upgrade levels
         upgrades = {
             damage_multiplier = 0,
@@ -68,16 +95,16 @@ end
 
 function Player:update(dt, assets)
     local currentTime = love.timer.getTime()
-    
+
     -- Update weapon reload with inventory
     local currentWeapon = self:getCurrentWeapon()
     if currentWeapon then
         currentWeapon:updateReload(dt, self.ammoInventory)
     end
-    
+
     -- Handle weapon switching between slots
     self.weaponSwitchCooldown = math.max(0, self.weaponSwitchCooldown - dt)
-    
+
     -- Weapon switching keys (1, 2, 3 for slots)
     if self.weaponSwitchCooldown <= 0 then
         if love.keyboard.isDown('1') then
@@ -110,10 +137,10 @@ function Player:update(dt, assets)
     -- Weapon-specific movement restrictions
     local canMove = true
     local canAim = true
-    
+
     -- Check if currently shooting (during shooting animation)
     local isShooting = self.isShooting
-    
+
     -- Apply weapon-specific restrictions from weapon definitions
     if isShooting then
         local currentWeapon = self:getCurrentWeapon()
@@ -128,7 +155,7 @@ function Player:update(dt, assets)
     -- Movement with dash and weapon restrictions
     local moved = false
     local currentSpeed = self.isDashing and self.dashSpeed or self.speed
-    
+
     if canMove then
         if love.keyboard.isDown('w') or love.keyboard.isDown('up') then
             self.y = self.y - currentSpeed * dt
@@ -190,7 +217,7 @@ function Player:update(dt, assets)
         elseif self.isCharging then
             -- Update charge time
             self.chargeTime = currentTime - self.chargeStartTime
-            
+
             -- Cap charge time at maximum
             local weaponConfig = Weapons.TYPES.RAILGUN
             if weaponConfig and weaponConfig.specificVars then
@@ -198,7 +225,7 @@ function Player:update(dt, assets)
             else
                 self.chargeTime = math.min(self.chargeTime, self.maxChargeTime)
             end
-            
+
             -- Check if mouse button released to fire
             if not love.mouse.isDown(1) then
                 -- Fire the railgun with charge-based damage
@@ -224,19 +251,28 @@ function Player:update(dt, assets)
             end
         end
     end
-    
+
     -- Update shooting animation
     if self.isShooting then
         self.shootingTime = self.shootingTime + dt
         self.shootingCurrentFrame = self.shootingCurrentFrame + dt / 0.05  -- Frame rate for shooting animation
-        
+
         if self.shootingTime >= self.shootingDuration then
             self.isShooting = false
         end
     end
 
+    -- Update throwing animation
+    if self.isThrowing then
+        self.throwingTime = self.throwingTime + dt
+
+        if self.throwingTime >= self.throwingDuration then
+            self.isThrowing = false
+        end
+    end
+
     -- Note: Boundary collision is now handled by the collision system
-    
+
     return false
 end
 
@@ -247,7 +283,7 @@ function Player:draw(assets, debug)
         love.graphics.push()
         love.graphics.translate(self.x + self.width/2, self.y + self.height/2)
         love.graphics.rotate(self.angle + math.pi/2)
-        
+
         -- Use shooting animation when shooting, otherwise walking animation
         if self.isShooting then
             local frame = math.floor(self.shootingCurrentFrame) % #assets.soldierShootingImages + 1
@@ -256,7 +292,7 @@ function Player:draw(assets, debug)
             local walkingFrameIndex = math.floor(self.walkingFrameTime / self.walkingFrameDuration) % #assets.soldierWalkingImages + 1
             love.graphics.draw(assets.soldierWalkingImages[walkingFrameIndex], -32, -90, 0, 0.5, 0.5)
         end
-        
+
         love.graphics.pop()
     end
 
@@ -264,13 +300,13 @@ function Player:draw(assets, debug)
     if debug then
         love.graphics.setColor(1, 0, 0, 0.5)
         love.graphics.rectangle('line', self.x, self.y, self.width, self.height)
-        
+
         -- Dash cooldown indicator
         if self.dashCooldown > 0 then
             love.graphics.setColor(1, 0.5, 0, 0.7)
             love.graphics.rectangle('fill', self.x, self.y - 10, self.width * (1 - self.dashCooldown/1.5), 5)
         end
-        
+
         love.graphics.setColor(1, 1, 1)
     end
 end
@@ -282,13 +318,13 @@ function Player:takeDamage(amount, enemyX, enemyY)
             local dx = enemyX - (self.x + self.width/2)
             local dy = enemyY - (self.y + self.height/2)
             local dist = math.sqrt(dx*dx + dy*dy)
-            
+
             -- Only take damage if enemy is within reasonable attack distance
             if dist > 100 then  -- Increased from 50 to 100 for safety margin
                 return false
             end
         end
-        
+
         self.health = math.max(0, self.health - amount)
         self.invulnerable = true
         self.invulnerableTime = 1.0
@@ -306,7 +342,7 @@ function Player:switchWeapon(weaponType)
     if self.currentWeapon then
         self.weaponInventory[self.currentWeapon.type] = self.currentWeapon
     end
-    
+
     -- Get the weapon from inventory or create new one
     if self.weaponInventory[weaponType] then
         self.currentWeapon = self.weaponInventory[weaponType]
@@ -344,7 +380,7 @@ function Player:getWeaponInfo()
         local weaponConfig = Weapons.TYPES[weaponType]
         local ammoType = weaponConfig.ammoType
         local inventoryAmmo = self.ammoInventory[ammoType] or 0
-        
+
         return currentAmmo, maxAmmo, weaponName, inventoryAmmo, ammoType
     end
     return 0, 0, "No Weapon", 0, "NONE"
@@ -397,13 +433,13 @@ function Player:getChargeProgress()
     if not self.isCharging then
         return 0
     end
-    
+
     local weaponConfig = Weapons.TYPES.RAILGUN
     local maxChargeTime = self.maxChargeTime
     if weaponConfig and weaponConfig.specificVars then
         maxChargeTime = weaponConfig.specificVars.maxChargeTime
     end
-    
+
     return math.min(self.chargeTime / maxChargeTime, 1.0)
 end
 
@@ -411,15 +447,15 @@ function Player:getChargeDamageMultiplier()
     if not self.isCharging then
         return 1.0
     end
-    
+
     local weaponConfig = Weapons.TYPES.RAILGUN
     if not weaponConfig or not weaponConfig.specificVars then
         return 1.0
     end
-    
+
     local minMultiplier = weaponConfig.specificVars.minDamageMultiplier or 0.5
     local maxMultiplier = weaponConfig.specificVars.maxDamageMultiplier or 3.0
-    
+
     local progress = self:getChargeProgress()
     return minMultiplier + (maxMultiplier - minMultiplier) * progress
 end
@@ -432,7 +468,7 @@ function Player:switchWeaponSlot(slot)
         if self.isCharging then
             self.isCharging = false
         end
-        
+
         self.currentWeaponSlot = slot
         self.weaponSwitchCooldown = 0.5
         return true
@@ -447,7 +483,7 @@ function Player:addWeapon(weaponType)
             return false  -- Already have this weapon
         end
     end
-    
+
     -- Try to add to empty slot first
     for slot = 1, 3 do
         if not self.weaponSlots[slot] then
@@ -455,7 +491,7 @@ function Player:addWeapon(weaponType)
             return true
         end
     end
-    
+
     -- No empty slots, add to unequipped
     table.insert(self.unequippedWeapons, Weapons:new(weaponType))
     return true
@@ -463,19 +499,19 @@ end
 
 function Player:moveWeapon(fromSlot, toSlot)
     if fromSlot == toSlot then return false end
-    
+
     if fromSlot >= 1 and fromSlot <= 3 and toSlot >= 1 and toSlot <= 3 then
         local temp = self.weaponSlots[toSlot]
         self.weaponSlots[toSlot] = self.weaponSlots[fromSlot]
         self.weaponSlots[fromSlot] = temp
-        
+
         -- Update current weapon slot if needed
         if self.currentWeaponSlot == fromSlot then
             self.currentWeaponSlot = toSlot
         elseif self.currentWeaponSlot == toSlot then
             self.currentWeaponSlot = fromSlot
         end
-        
+
         return true
     end
     return false
@@ -486,13 +522,13 @@ function Player:swapWeaponWithInventory(slot, inventoryIndex)
         local temp = self.weaponSlots[slot]
         self.weaponSlots[slot] = self.unequippedWeapons[inventoryIndex]
         self.unequippedWeapons[inventoryIndex] = temp
-        
+
         -- Update current weapon slot if needed
         if self.currentWeaponSlot == slot then
             -- Weapon was swapped out, switch to new weapon
             self.currentWeaponSlot = slot
         end
-        
+
         return true
     end
     return false
@@ -576,14 +612,14 @@ function Player:hasWeapon(weaponType)
             return true
         end
     end
-    
+
     -- Check unequipped weapons
     for _, weapon in ipairs(self.unequippedWeapons) do
         if weapon.type == weaponType then
             return true
         end
     end
-    
+
     return false
 end
 
@@ -598,64 +634,64 @@ function Player:canUpgrade(upgradeType)
     if not upgradeData then
         return false
     end
-    
+
     local currentLevel = self:getUpgradeLevel(upgradeData.effect)
     return currentLevel < upgradeData.maxLevel
 end
 
-    function Player:purchaseUpgrade(upgradeType)
-        local Shop = require('shop')
-        local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
-        if not upgradeData then
-            print("DEBUG: Invalid upgrade type: " .. tostring(upgradeType))
-            return false, "Invalid upgrade type"
-        end
-        
-        local currentLevel = self:getUpgradeLevel(upgradeData.effect)
-        print(string.format("DEBUG: Upgrade %s current level: %d, max level: %d", upgradeType, currentLevel, upgradeData.maxLevel))
-        
-        if currentLevel >= upgradeData.maxLevel then
-            print("DEBUG: Max level reached for upgrade: " .. upgradeType)
-            return false, "Max level reached"
-        end
-        
-        local cost = upgradeData.cost
-        print(string.format("DEBUG: Upgrade cost: %d, player money: %d", cost, self.money))
-        
-        if not self:spendMoney(cost) then
-            print("DEBUG: Not enough money for upgrade: " .. upgradeType)
-            return false, "Not enough money"
-        end
-        
-        -- Apply the upgrade
-        self.upgrades[upgradeData.effect] = currentLevel + 1
-        print(string.format("DEBUG: Applied upgrade %s, new level: %d", upgradeData.effect, self.upgrades[upgradeData.effect]))
-        self:applyUpgradeEffects()
-        
-        return true, "Upgrade purchased: " .. upgradeData.name .. " (Level " .. (currentLevel + 1) .. ")"
+function Player:purchaseUpgrade(upgradeType)
+    local Shop = require('shop')
+    local upgradeData = Shop.UPGRADE_COSTS[upgradeType]
+    if not upgradeData then
+        print("DEBUG: Invalid upgrade type: " .. tostring(upgradeType))
+        return false, "Invalid upgrade type"
     end
+
+    local currentLevel = self:getUpgradeLevel(upgradeData.effect)
+    print(string.format("DEBUG: Upgrade %s current level: %d, max level: %d", upgradeType, currentLevel, upgradeData.maxLevel))
+
+    if currentLevel >= upgradeData.maxLevel then
+        print("DEBUG: Max level reached for upgrade: " .. upgradeType)
+        return false, "Max level reached"
+    end
+
+    local cost = upgradeData.cost
+    print(string.format("DEBUG: Upgrade cost: %d, player money: %d", cost, self.money))
+
+    if not self:spendMoney(cost) then
+        print("DEBUG: Not enough money for upgrade: " .. upgradeType)
+        return false, "Not enough money"
+    end
+
+    -- Apply the upgrade
+    self.upgrades[upgradeData.effect] = currentLevel + 1
+    print(string.format("DEBUG: Applied upgrade %s, new level: %d", upgradeData.effect, self.upgrades[upgradeData.effect]))
+    self:applyUpgradeEffects()
+
+    return true, "Upgrade purchased: " .. upgradeData.name .. " (Level " .. (currentLevel + 1) .. ")"
+end
 
 function Player:applyUpgradeEffects()
     -- Apply damage multiplier
     local damageLevel = self.upgrades.damage_multiplier or 0
     local damageMultiplier = 1.0 + (damageLevel * 0.10)  -- +10% per level
-    
+
     -- Apply movement speed
     local speedLevel = self.upgrades.movement_speed or 0
     local speedMultiplier = 1.0 + (speedLevel * 0.10)  -- +10% per level
     self.speed = 300 * speedMultiplier
     self.dashSpeed = 600 * speedMultiplier
-    
+
     -- Apply max health
     local healthLevel = self.upgrades.max_health or 0
     local healthBonus = healthLevel * 25  -- +25 health per level
     self.maxHealth = 100 + healthBonus
-    
+
     -- Apply dash cooldown reduction
     local dashLevel = self.upgrades.dash_cooldown or 0
     local dashCooldownMultiplier = 1.0 - (dashLevel * 0.20)  -- -20% per level
     -- Note: Dash cooldown is applied when checking cooldown
-    
+
     -- Apply ammo capacity
     local ammoLevel = self.upgrades.ammo_capacity or 0
     local ammoMultiplier = 1.0 + (ammoLevel * 0.25)  -- +25% per level
@@ -688,6 +724,110 @@ end
 
 function Player:getUpgradeInfo()
     return self.upgrades
+end
+
+-- Throwable inventory methods
+
+function Player:getCurrentThrowableType()
+    local availableTypes = self.throwableInventory.availableTypes
+    local selectedIndex = self.throwableInventory.selectedThrowable
+    return availableTypes[selectedIndex]
+end
+
+function Player:getCurrentThrowableInfo()
+    local throwableType = self:getCurrentThrowableType()
+    if throwableType and self.throwableInventory.throwables[throwableType] then
+        local throwable = self.throwableInventory.throwables[throwableType]
+        return throwable.name, throwable.count, throwable.maxCount, throwable.description
+    end
+    return "No Throwable", 0, 0, "No throwable selected"
+end
+
+function Player:canThrowThrowable()
+    local currentTime = love.timer.getTime()
+    if currentTime - self.lastThrowTime < self.throwCooldown then
+        return false, "Throw cooldown active"
+    end
+
+    local throwableType = self:getCurrentThrowableType()
+    if not throwableType then
+        return false, "No throwable selected"
+    end
+
+    local throwable = self.throwableInventory.throwables[throwableType]
+    if not throwable or throwable.count <= 0 then
+        return false, "No throwable ammo"
+    end
+
+    return true, "Can throw"
+end
+
+function Player:throwThrowable()
+    local canThrow, reason = self:canThrowThrowable()
+    if not canThrow then
+        return false, reason
+    end
+
+    -- Consume throwable
+    local throwableType = self:getCurrentThrowableType()
+    self.throwableInventory.throwables[throwableType].count =
+        self.throwableInventory.throwables[throwableType].count - 1
+
+    -- Set throwing state
+    self.isThrowing = true
+    self.throwingTime = 0
+    self.lastThrowTime = love.timer.getTime()
+
+    return true, "Throwable thrown"
+end
+
+function Player:switchThrowable(delta)
+    -- delta: 1 for next, -1 for previous
+    local numTypes = #self.throwableInventory.availableTypes
+    local currentIndex = self.throwableInventory.selectedThrowable
+
+    currentIndex = currentIndex + delta
+    if currentIndex < 1 then
+        currentIndex = numTypes
+    elseif currentIndex > numTypes then
+        currentIndex = 1
+    end
+
+    self.throwableInventory.selectedThrowable = currentIndex
+    return self:getCurrentThrowableType()
+end
+
+function Player:addThrowable(throwableType, amount)
+    if not self.throwableInventory.throwables[throwableType] then
+        return false, "Unknown throwable type"
+    end
+
+    local throwable = self.throwableInventory.throwables[throwableType]
+    local spaceAvailable = throwable.maxCount - throwable.count
+    local amountToAdd = math.min(amount, spaceAvailable)
+
+    throwable.count = throwable.count + amountToAdd
+
+    if amountToAdd < amount then
+        return false, "Inventory full, added " .. amountToAdd .. " of " .. amount
+    else
+        return true, "Added " .. amountToAdd .. " throwable(s)"
+    end
+end
+
+function Player:getThrowableInventory()
+    return self.throwableInventory
+end
+
+function Player:getThrowingProgress()
+    if not self.isThrowing then
+        return 1.0
+    end
+    return self.throwingTime / self.throwingDuration
+end
+
+function Player:isThrowingThrowable()
+    return self.isThrowing
 end
 
 return Player

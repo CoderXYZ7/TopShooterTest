@@ -88,6 +88,9 @@ function UI:draw(player, debug, walkingFrameTime, walkingFrameDuration, soldierW
         
         -- Draw inventory slots
         self:drawInventory(player)
+
+        -- Draw throwable inventory
+        self:drawThrowableInventory(player)
         
         -- Debug information (moved to bottom right to avoid clutter)
         if debug then
@@ -244,6 +247,37 @@ end
     end
 end
 
+-- Throwable inventory display method
+function UI:drawThrowableInventory(player)
+    local throwableName, throwableCount, throwableMax, throwableDesc = player:getCurrentThrowableInfo()
+    local currentThrowableType = player:getCurrentThrowableType()
+
+    -- Draw throwable panel (right side of screen)
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle('fill', love.graphics.getWidth() - 200, love.graphics.getHeight() - 80, 200, 80)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("THROWABLES", love.graphics.getWidth() - 190, love.graphics.getHeight() - 75)
+
+    -- Draw current throwable info
+    love.graphics.print(throwableName, love.graphics.getWidth() - 190, love.graphics.getHeight() - 60)
+    love.graphics.print("Count: " .. throwableCount .. "/" .. throwableMax, love.graphics.getWidth() - 190, love.graphics.getHeight() - 45)
+
+    -- Draw throwable selection indicator
+    if throwableCount > 0 then
+        love.graphics.setColor(0.2, 0.8, 0.2, 1)
+        love.graphics.print("READY", love.graphics.getWidth() - 190, love.graphics.getHeight() - 30)
+    else
+        love.graphics.setColor(0.8, 0.2, 0.2, 1)
+        love.graphics.print("EMPTY", love.graphics.getWidth() - 190, love.graphics.getHeight() - 30)
+    end
+    love.graphics.setColor(1, 1, 1)
+
+    -- Draw controls hint
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("Q/E: Select | F: Throw", love.graphics.getWidth() - 190, love.graphics.getHeight() - 15)
+    love.graphics.setColor(1, 1, 1)
+end
+
 -- Shop display methods with scrolling
 function UI:drawShop(gameManager, player)
     if not gameManager:isShopOpen() then
@@ -267,8 +301,8 @@ function UI:drawShop(gameManager, player)
                        love.graphics.getWidth()/2 - 150, 120)
     
     -- Draw category tabs
-    local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES"}
-    local tabWidth = 120
+    local categories = {"WEAPONS", "AMMO", "HEALTH", "UPGRADES", "THROWABLES"}
+    local tabWidth = 100
     for i, category in ipairs(categories) do
         local x = 150 + (i - 1) * tabWidth
         if shop.selectedCategory == category then
@@ -278,7 +312,7 @@ function UI:drawShop(gameManager, player)
         end
         love.graphics.rectangle('fill', x, 150, tabWidth - 5, 25)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.print(category, x + 10, 155)
+        love.graphics.print(category, x + 5, 155)
     end
     
     -- Draw visible items with scrolling
